@@ -4,4 +4,5 @@ This folder captures both present architectural decisions and future-facing idea
 
 - `architecture/`: current structure, constraints, and intended boundaries
 - `ideas/`: rougher feature and product directions that are not yet commitments
+- `features/`: future features with scoped specs, implementation plans, and reference material
 - `adr/`: architecture decision records once concrete tradeoffs need to be captured
