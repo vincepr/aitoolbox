@@ -15,7 +15,7 @@ use std::fs;
     name = "knowledge-cli",
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
-    after_help = "Examples:\n  knowledge-cli init --db .local/knowledge.sqlite3 --source-file config/knowledge/sources.example.json\n  knowledge-cli init --db .local/knowledge.sqlite3 --source-json '{\"entities\":[{\"canonical_name\":\"MyCompanyName.Ebay.Custom.Client\",\"kind\":\"library\",\"namespace\":\"MyCompanyName.Ebay.Custom.Client\"}]}'\n  knowledge-cli get --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"entity\":\"MyCompanyName.Ebay.Custom.Client\"}'\n  knowledge-cli capture-lesson --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"slug\":\"avoid-global-singleton\",\"body\":\"Global state leaked between tests\"}'\n  knowledge-cli capture-issue --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"slug\":\"stale-mapping-refresh\",\"body\":\"Need automatic refresh for stale repository paths\"}'"
+    after_help = "Examples:\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -55,20 +55,28 @@ enum Command {
             help = "Path to the SQLite knowledge database"
         )]
         db: Utf8PathBuf,
-        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        #[arg(
+            long,
+            default_value = "knowledge/notes",
+            help = "Root directory containing compact knowledge notes"
+        )]
         notes_root: Utf8PathBuf,
+        #[arg(
+            help = "Canonical entity name for exact lookup (for example MyCompanyName.Ebay.Custom.Client)"
+        )]
+        entity: Option<String>,
         #[arg(
             long,
             help = "Path to JSON input file: {\"entity\":\"<canonical-name>\"}",
             conflicts_with = "input_json",
-            required_unless_present = "input_json"
+            conflicts_with = "entity"
         )]
         input_file: Option<Utf8PathBuf>,
         #[arg(
             long,
             help = "Escaped JSON input: {\"entity\":\"<canonical-name>\"}",
             conflicts_with = "input_file",
-            required_unless_present = "input_file"
+            conflicts_with = "entity"
         )]
         input_json: Option<String>,
     },
@@ -82,18 +90,22 @@ enum Command {
         db: Utf8PathBuf,
         #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
+        #[arg(long, help = "Stable lesson slug used as note identifier")]
+        slug: Option<String>,
+        #[arg(long, help = "Lesson text content to store in the note body")]
+        body: Option<String>,
         #[arg(
             long,
             help = "Path to JSON input file: {\"slug\":\"<slug>\",\"body\":\"<text>\"}",
             conflicts_with = "input_json",
-            required_unless_present = "input_json"
+            conflicts_with_all = ["slug", "body"]
         )]
         input_file: Option<Utf8PathBuf>,
         #[arg(
             long,
             help = "Escaped JSON input: {\"slug\":\"<slug>\",\"body\":\"<text>\"}",
             conflicts_with = "input_file",
-            required_unless_present = "input_file"
+            conflicts_with_all = ["slug", "body"]
         )]
         input_json: Option<String>,
     },
@@ -109,18 +121,22 @@ enum Command {
         db: Utf8PathBuf,
         #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
+        #[arg(long, help = "Stable issue slug used as note identifier")]
+        slug: Option<String>,
+        #[arg(long, help = "Issue text content to store in the note body")]
+        body: Option<String>,
         #[arg(
             long,
             help = "Path to JSON input file: {\"slug\":\"<slug>\",\"body\":\"<text>\"}",
             conflicts_with = "input_json",
-            required_unless_present = "input_json"
+            conflicts_with_all = ["slug", "body"]
         )]
         input_file: Option<Utf8PathBuf>,
         #[arg(
             long,
             help = "Escaped JSON input: {\"slug\":\"<slug>\",\"body\":\"<text>\"}",
             conflicts_with = "input_file",
-            required_unless_present = "input_file"
+            conflicts_with_all = ["slug", "body"]
         )]
         input_json: Option<String>,
     },
@@ -167,21 +183,26 @@ fn run(command: Command) -> Result<()> {
         Command::Get {
             db,
             notes_root,
+            entity,
             input_file,
             input_json,
-        } => handle_get(db, notes_root, input_file, input_json),
+        } => handle_get(db, notes_root, entity, input_file, input_json),
         Command::CaptureLesson {
             db,
             notes_root,
+            slug,
+            body,
             input_file,
             input_json,
-        } => handle_capture_lesson(db, notes_root, input_file, input_json),
+        } => handle_capture_lesson(db, notes_root, slug, body, input_file, input_json),
         Command::CaptureIssue {
             db,
             notes_root,
+            slug,
+            body,
             input_file,
             input_json,
-        } => handle_capture_issue(db, notes_root, input_file, input_json),
+        } => handle_capture_issue(db, notes_root, slug, body, input_file, input_json),
     }
 }
 
@@ -195,6 +216,11 @@ fn parse_payload<T: for<'de> Deserialize<'de>>(
 }
 
 fn open_bootstrapped_db(db: &Utf8PathBuf) -> Result<Connection> {
+    if let Some(parent) = db.parent() {
+        fs::create_dir_all(parent.as_std_path())
+            .with_context(|| format!("failed to create database directory: {parent}"))?;
+    }
+
     let conn = Connection::open(db.as_std_path())
         .with_context(|| format!("failed to open database: {db}"))?;
     bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
@@ -230,28 +256,44 @@ fn handle_init(
 fn handle_get(
     db: Utf8PathBuf,
     notes_root: Utf8PathBuf,
+    entity: Option<String>,
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
 ) -> Result<()> {
+    let entity_name = parse_get_entity(entity, input_file, input_json)?;
     let conn = open_bootstrapped_db(&db)?;
     let store = KnowledgeStore::new(&conn);
     let notes = NoteStore::new(notes_root);
-    let payload = parse_payload::<GetPayload>(input_file, input_json, "get")?;
-    let answer = store.query_exact(&payload.entity, &notes)?;
-    print_get_result(&payload.entity, answer);
+    let answer = store.query_exact(&entity_name, &notes)?;
+    print_get_result(&entity_name, answer);
 
     Ok(())
+}
+
+fn parse_get_entity(
+    entity: Option<String>,
+    input_file: Option<Utf8PathBuf>,
+    input_json: Option<String>,
+) -> Result<String> {
+    if let Some(entity_name) = entity {
+        return Ok(entity_name);
+    }
+
+    let payload = parse_payload::<GetPayload>(input_file, input_json, "get")?;
+    Ok(payload.entity)
 }
 
 fn handle_capture_lesson(
     db: Utf8PathBuf,
     notes_root: Utf8PathBuf,
+    slug: Option<String>,
+    body: Option<String>,
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
 ) -> Result<()> {
+    let payload = parse_capture_payload(slug, body, input_file, input_json, "capture-lesson")?;
     let conn = open_bootstrapped_db(&db)?;
     let notes = NoteStore::new(notes_root);
-    let payload = parse_payload::<CapturePayload>(input_file, input_json, "capture-lesson")?;
     capture_lesson(&conn, &notes, &payload.slug, &payload.body)?;
     Ok(())
 }
@@ -259,14 +301,36 @@ fn handle_capture_lesson(
 fn handle_capture_issue(
     db: Utf8PathBuf,
     notes_root: Utf8PathBuf,
+    slug: Option<String>,
+    body: Option<String>,
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
 ) -> Result<()> {
+    let payload = parse_capture_payload(slug, body, input_file, input_json, "capture-issue")?;
     let conn = open_bootstrapped_db(&db)?;
     let notes = NoteStore::new(notes_root);
-    let payload = parse_payload::<CapturePayload>(input_file, input_json, "capture-issue")?;
     capture_issue(&conn, &notes, &payload.slug, &payload.body)?;
     Ok(())
+}
+
+fn parse_capture_payload(
+    slug: Option<String>,
+    body: Option<String>,
+    input_file: Option<Utf8PathBuf>,
+    input_json: Option<String>,
+    context: &str,
+) -> Result<CapturePayload> {
+    match (slug, body) {
+        (Some(slug), Some(body)) => return Ok(CapturePayload { slug, body }),
+        (Some(_), None) | (None, Some(_)) => {
+            anyhow::bail!(
+                "both --slug and --body are required together for {context} when not using JSON input"
+            );
+        }
+        (None, None) => {}
+    }
+
+    parse_payload::<CapturePayload>(input_file, input_json, context)
 }
 
 fn print_get_result(requested_entity: &str, answer: Option<knowledge_core::store::QueryAnswer>) {

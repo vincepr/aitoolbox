@@ -14,43 +14,10 @@ This is quite cluncy usage. I want to keep the most used clownledge-cli commands
 - knowledge-cli query MyCompanyName.Ebay.Custom.Client -> this returns sensible defaults already
 
 ## Rework explorability, imporove self discoverability
-- Unexplained flags are bad for a cli tool. Because it requires knowledge about how to query/use them.
-- instead different flags/etc are more suitable. Because these will get directly exposed by the cli iteself. And explained by it itself. While query always needs additional knowledge, that might not be in the context and hard to find. So stick to a list of flags or other elements that are directly exposed in the cli itself.
-- Following is some help commands where you can see that it is currently impossible to self discover what  --notes-root <NOTES_ROOT>  does and how to use it
-```
-vincep@DESKTOP-MH64D1J:~/aitoolbox$ knowledge-cli query
-error: the following required arguments were not provided:
-  --db <DB>
-  --notes-root <NOTES_ROOT>
-  <QUERY>
-
-Usage: knowledge-cli query --db <DB> --notes-root <NOTES_ROOT> <QUERY>
-
-For more information, try '--help'.
-vincep@DESKTOP-MH64D1J:~/aitoolbox$ knowledge-cli --help
-Usage: knowledge-cli <COMMAND>
-
-Commands:
-  init     
-  query    
-  capture  
-  help     Print this message or the help of the given subcommand(s)
-
-Options:
-  -h, --help  Print help
-vincep@DESKTOP-MH64D1J:~/aitoolbox$ knowledge-cli query --help
-Usage: knowledge-cli query --db <DB> --notes-root <NOTES_ROOT> <QUERY>
-
-Arguments:
-  <QUERY>  
-
-Options:
-      --db <DB>                  
-      --notes-root <NOTES_ROOT>  
-  -h, --help                     Print help
-vincep@DESKTOP-MH64D1J:~/aitoolbox$ 
-```
+- Current status: improved. `query` was replaced by `get`, defaults now reduce required flags, and help output has command/flag descriptions.
+- Remaining gap: add shell completions and command aliases so discoverability extends beyond `--help`.
+- Remaining gap: add a `quickstart` command to scaffold `.local/knowledge.sqlite3`, `knowledge/notes`, and example source file.
+- Remaining gap: improve error guidance when users provide partial argument sets (show one-line fix examples directly in errors).
 
 ## pipeline to build releases via github actions
 - I want tagged versioned releases of the cli. (For ubuntu aswell as mac)
-

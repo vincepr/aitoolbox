@@ -202,6 +202,7 @@ pub fn calculate_total(items: &[Item], tax_rate: f64) -> Result<f64, Calculation
 - **MUST** write clear, descriptive commit messages
 - **MUST** include a complete MR/PR description whenever opening a merge request or pull request
   - At minimum include: Summary, Changes, Verification (commands + results), and Risks/Notes
+- **MUST** use `gh` to create pull requests/merge requests only when explicitly asked by the user
 - **NEVER** commit commented-out code; delete it
 - **NEVER** commit debug `println!` statements or `dbg!` macros
 - **NEVER** commit credentials or sensitive data
