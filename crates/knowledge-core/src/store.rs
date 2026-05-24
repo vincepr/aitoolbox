@@ -102,12 +102,26 @@ impl<'a> KnowledgeStore<'a> {
             .query_row(
                 "
                 SELECT id, canonical_name, kind
-                FROM entities
-                WHERE canonical_name = ?1
-                    OR namespace = ?1
-                    OR package_name = ?1
-                    OR repo_name = ?1
-                    OR id IN (SELECT entity_id FROM aliases WHERE alias = ?1)
+                FROM entities e
+                WHERE e.canonical_name = ?1
+                    OR e.namespace = ?1
+                    OR e.package_name = ?1
+                    OR e.repo_name = ?1
+                    OR EXISTS (
+                        SELECT 1
+                        FROM aliases a
+                        WHERE a.entity_id = e.id AND a.alias = ?1
+                    )
+                ORDER BY
+                    CASE
+                        WHEN e.canonical_name = ?1 THEN 1
+                        WHEN e.namespace = ?1 THEN 2
+                        WHEN e.package_name = ?1 THEN 3
+                        WHEN e.repo_name = ?1 THEN 4
+                        ELSE 5
+                    END,
+                    e.canonical_name,
+                    e.id
                 LIMIT 1
                 ",
                 [query],
