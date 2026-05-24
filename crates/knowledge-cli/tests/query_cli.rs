@@ -348,3 +348,13 @@ fn alias_prints_shell_snippet() {
         .success()
         .stdout(contains("alias kno='knowledge-cli'"));
 }
+
+#[test]
+fn version_prints_semver() {
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args(["version"])
+        .assert()
+        .success()
+        .stdout(contains("0.1.0"));
+}

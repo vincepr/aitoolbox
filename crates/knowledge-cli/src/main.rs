@@ -22,6 +22,7 @@ const DEFAULT_SOURCE_JSON: &str = "{\n  \"entities\": []\n}\n";
 #[derive(Parser)]
 #[command(
     name = "knowledge-cli",
+    version,
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
     after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\nExamples (normal):\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash\nExamples (edge-case overrides):\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'text' --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes"
@@ -146,6 +147,8 @@ enum Command {
         #[arg(help = "Shell type to print alias syntax for")]
         shell: AliasShell,
     },
+    #[command(about = "Print the knowledge-cli version")]
+    Version,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -265,6 +268,10 @@ fn run(command: Command) -> Result<()> {
         }
         Command::Alias { shell } => {
             print_alias(shell);
+            Ok(())
+        }
+        Command::Version => {
+            print_version();
             Ok(())
         }
     }
@@ -538,4 +545,8 @@ fn print_alias(shell: AliasShell) {
         AliasShell::PowerShell => "Set-Alias -Name kno -Value knowledge-cli",
     };
     println!("{alias_line}");
+}
+
+fn print_version() {
+    println!("{}", env!("CARGO_PKG_VERSION"));
 }
