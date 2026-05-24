@@ -200,3 +200,61 @@ fn source_file_validation_failure_leaves_no_partial_writes() {
     assert_eq!(entity_count, 0);
     assert_eq!(location_count, 0);
 }
+
+#[test]
+fn source_file_commit_failure_rolls_back_and_closes_transaction() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    conn.execute_batch(
+        "
+        CREATE TABLE commit_failure_parent (
+            id INTEGER PRIMARY KEY
+        );
+
+        CREATE TABLE commit_failure_child (
+            parent_id INTEGER NOT NULL,
+            FOREIGN KEY(parent_id) REFERENCES commit_failure_parent(id)
+                DEFERRABLE INITIALLY DEFERRED
+        );
+
+        CREATE TRIGGER force_deferred_commit_failure
+        AFTER INSERT ON locations
+        BEGIN
+            INSERT INTO commit_failure_child(parent_id) VALUES (NEW.entity_id);
+        END;
+        ",
+    )
+    .unwrap();
+
+    let temp = tempdir().unwrap();
+    let file = temp.path().join("sources.json");
+    fs::write(
+        &file,
+        r#"{
+          "entities": [
+            {
+              "canonical_name": "ebay-common",
+              "kind": "project",
+              "local_path": "C:/repos/Ebay/Common"
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    let err = apply_source_file(&conn, Utf8PathBuf::from_path_buf(file).unwrap().as_path())
+        .unwrap_err()
+        .to_string();
+
+    let entity_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))
+        .unwrap();
+    let location_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM locations", [], |row| row.get(0))
+        .unwrap();
+
+    assert!(err.contains("FOREIGN KEY constraint failed"));
+    assert!(conn.is_autocommit());
+    assert_eq!(entity_count, 0);
+    assert_eq!(location_count, 0);
+}

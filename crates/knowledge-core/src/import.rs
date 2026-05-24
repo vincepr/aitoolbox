@@ -33,13 +33,9 @@ pub fn apply_source_file(conn: &Connection, path: &Utf8Path) -> Result<()> {
         .map(ValidatedSourceEntity::try_from)
         .collect::<Result<Vec<_>>>()?;
 
-    conn.execute_batch("BEGIN IMMEDIATE TRANSACTION")?;
-    let result = apply_validated_source(conn, entities);
-    if result.is_err() {
-        conn.execute_batch("ROLLBACK")?;
-        return result;
-    }
-    conn.execute_batch("COMMIT")?;
+    let tx = conn.unchecked_transaction()?;
+    apply_validated_source(&tx, entities)?;
+    tx.commit()?;
 
     Ok(())
 }
