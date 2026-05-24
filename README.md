@@ -22,7 +22,12 @@ Start with the docs in [docs/architecture](/C:/Users/vince/RiderProjects/aitoolb
 
 ## Knowledge CLI
 
-Use the local knowledge tool to initialize a small SQLite store and query exact identifiers:
+Install:
 
-- `cargo run -p knowledge-cli -- init --db .local/knowledge.db --source config/knowledge/sources.example.json`
-- `cargo run -p knowledge-cli -- query MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes`
+- `cargo install --path crates/knowledge-cli`
+
+Use:
+
+- `mkdir -p .local`
+- `knowledge-cli init --db .local/knowledge.db --source config/knowledge/sources.example.json`
+- `knowledge-cli query MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes`
