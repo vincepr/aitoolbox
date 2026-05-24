@@ -7,6 +7,7 @@ use knowledge_core::notes::NoteStore;
 use knowledge_core::schema::bootstrap;
 use knowledge_core::store::KnowledgeStore;
 use rusqlite::Connection;
+use std::fs;
 
 #[derive(Parser)]
 #[command(name = "knowledge-cli")]
@@ -45,6 +46,9 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt().without_time().init();
     match Cli::parse().command {
         Command::Init { db, source } => {
+            if let Some(parent) = db.parent() {
+                fs::create_dir_all(parent.as_std_path())?;
+            }
             let conn = Connection::open(db.as_std_path())?;
             bootstrap(&conn)?;
             apply_source_file(&conn, source.as_path())?;
