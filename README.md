@@ -29,7 +29,6 @@ Install:
 
 Use:
 
-- `mkdir -p .local`
 - `knowledge-cli quickstart`
 - `knowledge-cli init --source-file config/knowledge/sources.example.json`
 - `knowledge-cli init --source-json '{"entities":[{"canonical_name":"MyCompanyName.Ebay.Custom.Client","kind":"library","namespace":"MyCompanyName.Ebay.Custom.Client"}]}'`
@@ -38,3 +37,8 @@ Use:
 - `knowledge-cli capture-issue --slug stale-mapping-refresh --body "Need automatic refresh for stale repository paths"`
 - `knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli`
 - `knowledge-cli alias bash`
+
+Default path resolution for DB, notes root, and source file is:
+1. explicit CLI flag
+2. environment variable (`KNOWLEDGE_CLI_DB`, `KNOWLEDGE_CLI_NOTES_ROOT`, `KNOWLEDGE_CLI_SOURCE_FILE`)
+3. user-level OS directories (`data_local_dir` / `config_dir`)

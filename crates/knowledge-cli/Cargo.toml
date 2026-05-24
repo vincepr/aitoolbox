@@ -9,6 +9,7 @@ anyhow.workspace = true
 camino.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
+dirs.workspace = true
 knowledge-core = { path = "../knowledge-core" }
 rusqlite.workspace = true
 serde.workspace = true

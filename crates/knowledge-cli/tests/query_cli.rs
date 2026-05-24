@@ -57,10 +57,10 @@ fn get_command_returns_summary_and_missing_mapping_message() {
 fn get_accepts_positional_entity_with_default_paths() {
     let temp = tempdir().unwrap();
     let source = temp.path().join("sources.json");
-    let notes = temp.path().join("knowledge").join("notes");
+    let db = temp.path().join("homebase").join("knowledge.sqlite3");
+    let notes = temp.path().join("homebase").join("notes");
 
     fs::create_dir_all(&notes).unwrap();
-    fs::create_dir_all(temp.path().join(".local")).unwrap();
     fs::write(
         &source,
         r#"{
@@ -77,14 +77,16 @@ fn get_accepts_positional_entity_with_default_paths() {
 
     Command::cargo_bin("knowledge-cli")
         .unwrap()
-        .current_dir(temp.path())
+        .env("KNOWLEDGE_CLI_DB", db.to_str().unwrap())
+        .env("KNOWLEDGE_CLI_NOTES_ROOT", notes.to_str().unwrap())
         .args(["init", "--source-file", source.to_str().unwrap()])
         .assert()
         .success();
 
     Command::cargo_bin("knowledge-cli")
         .unwrap()
-        .current_dir(temp.path())
+        .env("KNOWLEDGE_CLI_DB", db.to_str().unwrap())
+        .env("KNOWLEDGE_CLI_NOTES_ROOT", notes.to_str().unwrap())
         .args(["get", "MyCompanyName.Ebay.Custom.Client"])
         .assert()
         .success()
@@ -95,31 +97,34 @@ fn get_accepts_positional_entity_with_default_paths() {
 #[test]
 fn quickstart_creates_defaults_and_initializes_db() {
     let temp = tempdir().unwrap();
+    let db = temp.path().join("quick").join("knowledge.sqlite3");
+    let notes = temp.path().join("quick").join("notes");
+    let source = temp.path().join("quick").join("sources.example.json");
 
     Command::cargo_bin("knowledge-cli")
         .unwrap()
-        .current_dir(temp.path())
+        .env("KNOWLEDGE_CLI_DB", db.to_str().unwrap())
+        .env("KNOWLEDGE_CLI_NOTES_ROOT", notes.to_str().unwrap())
+        .env("KNOWLEDGE_CLI_SOURCE_FILE", source.to_str().unwrap())
         .args(["quickstart"])
         .assert()
         .success()
-        .stdout(contains("Database ready: .local/knowledge.sqlite3"))
-        .stdout(contains("Notes root ready: knowledge/notes"))
-        .stdout(contains(
-            "Source file ready: config/knowledge/sources.example.json",
-        ));
+        .stdout(contains(format!(
+            "Database ready: {}",
+            db.to_str().unwrap()
+        )))
+        .stdout(contains(format!(
+            "Notes root ready: {}",
+            notes.to_str().unwrap()
+        )))
+        .stdout(contains(format!(
+            "Source file ready: {}",
+            source.to_str().unwrap()
+        )));
 
-    assert!(temp
-        .path()
-        .join(".local")
-        .join("knowledge.sqlite3")
-        .exists());
-    assert!(temp.path().join("knowledge").join("notes").exists());
-    assert!(temp
-        .path()
-        .join("config")
-        .join("knowledge")
-        .join("sources.example.json")
-        .exists());
+    assert!(db.exists());
+    assert!(notes.exists());
+    assert!(source.exists());
 }
 
 #[test]

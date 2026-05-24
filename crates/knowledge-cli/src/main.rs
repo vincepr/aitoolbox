@@ -9,12 +9,14 @@ use knowledge_core::schema::bootstrap;
 use knowledge_core::store::KnowledgeStore;
 use rusqlite::Connection;
 use serde::Deserialize;
+use std::env;
 use std::fs;
 use std::io;
+use std::path::PathBuf;
 
-const DEFAULT_DB_PATH: &str = ".local/knowledge.sqlite3";
-const DEFAULT_NOTES_ROOT: &str = "knowledge/notes";
-const DEFAULT_SOURCE_FILE: &str = "config/knowledge/sources.example.json";
+const DB_ENV: &str = "KNOWLEDGE_CLI_DB";
+const NOTES_ROOT_ENV: &str = "KNOWLEDGE_CLI_NOTES_ROOT";
+const SOURCE_FILE_ENV: &str = "KNOWLEDGE_CLI_SOURCE_FILE";
 const DEFAULT_SOURCE_JSON: &str = "{\n  \"entities\": []\n}\n";
 
 #[derive(Parser)]
@@ -22,7 +24,7 @@ const DEFAULT_SOURCE_JSON: &str = "{\n  \"entities\": []\n}\n";
     name = "knowledge-cli",
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
-    after_help = "Examples:\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash"
+    after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\nExamples:\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -33,12 +35,8 @@ struct Cli {
 enum Command {
     #[command(about = "Initialize or refresh the knowledge database from a source JSON file")]
     Init {
-        #[arg(
-            long,
-            default_value = DEFAULT_DB_PATH,
-            help = "Path to the SQLite database file to create or update"
-        )]
-        db: Utf8PathBuf,
+        #[arg(long, help = "Path to the SQLite database file to create or update")]
+        db: Option<Utf8PathBuf>,
         #[arg(
             long,
             help = "Path to a JSON source file with knowledge entities",
@@ -56,39 +54,19 @@ enum Command {
     },
     #[command(about = "Create default local files and bootstrap the knowledge database")]
     Quickstart {
-        #[arg(
-            long,
-            default_value = DEFAULT_DB_PATH,
-            help = "Path to the SQLite knowledge database to initialize"
-        )]
-        db: Utf8PathBuf,
-        #[arg(
-            long,
-            default_value = DEFAULT_NOTES_ROOT,
-            help = "Root directory containing compact knowledge notes"
-        )]
-        notes_root: Utf8PathBuf,
-        #[arg(
-            long,
-            default_value = DEFAULT_SOURCE_FILE,
-            help = "Path to the source JSON file used by init"
-        )]
-        source_file: Utf8PathBuf,
+        #[arg(long, help = "Path to the SQLite knowledge database to initialize")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        notes_root: Option<Utf8PathBuf>,
+        #[arg(long, help = "Path to the source JSON file used by init")]
+        source_file: Option<Utf8PathBuf>,
     },
     #[command(about = "Resolve an entity by exact identifier and print its summary")]
     Get {
-        #[arg(
-            long,
-            default_value = DEFAULT_DB_PATH,
-            help = "Path to the SQLite knowledge database"
-        )]
-        db: Utf8PathBuf,
-        #[arg(
-            long,
-            default_value = DEFAULT_NOTES_ROOT,
-            help = "Root directory containing compact knowledge notes"
-        )]
-        notes_root: Utf8PathBuf,
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        notes_root: Option<Utf8PathBuf>,
         #[arg(
             help = "Canonical entity name for exact lookup (for example MyCompanyName.Ebay.Custom.Client)"
         )]
@@ -108,18 +86,10 @@ enum Command {
     },
     #[command(about = "Capture a reusable lesson note and register it in the knowledge store")]
     CaptureLesson {
-        #[arg(
-            long,
-            default_value = DEFAULT_DB_PATH,
-            help = "Path to the SQLite knowledge database"
-        )]
-        db: Utf8PathBuf,
-        #[arg(
-            long,
-            default_value = DEFAULT_NOTES_ROOT,
-            help = "Root directory containing compact knowledge notes"
-        )]
-        notes_root: Utf8PathBuf,
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        notes_root: Option<Utf8PathBuf>,
         #[arg(long, help = "Stable lesson slug used as note identifier")]
         slug: Option<String>,
         #[arg(long, help = "Lesson text content to store in the note body")]
@@ -143,18 +113,10 @@ enum Command {
         about = "Capture a workflow or architecture issue and register it in the knowledge store"
     )]
     CaptureIssue {
-        #[arg(
-            long,
-            default_value = DEFAULT_DB_PATH,
-            help = "Path to the SQLite knowledge database"
-        )]
-        db: Utf8PathBuf,
-        #[arg(
-            long,
-            default_value = DEFAULT_NOTES_ROOT,
-            help = "Root directory containing compact knowledge notes"
-        )]
-        notes_root: Utf8PathBuf,
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        notes_root: Option<Utf8PathBuf>,
         #[arg(long, help = "Stable issue slug used as note identifier")]
         slug: Option<String>,
         #[arg(long, help = "Issue text content to store in the note body")]
@@ -244,19 +206,29 @@ fn run(command: Command) -> Result<()> {
             db,
             source_file,
             source_json,
-        } => handle_init(db, source_file, source_json),
+        } => handle_init(resolve_db_path(db)?, source_file, source_json),
         Command::Quickstart {
             db,
             notes_root,
             source_file,
-        } => handle_quickstart(db, notes_root, source_file),
+        } => handle_quickstart(
+            resolve_db_path(db)?,
+            resolve_notes_root(notes_root)?,
+            resolve_source_file(source_file)?,
+        ),
         Command::Get {
             db,
             notes_root,
             entity,
             input_file,
             input_json,
-        } => handle_get(db, notes_root, entity, input_file, input_json),
+        } => handle_get(
+            resolve_db_path(db)?,
+            resolve_notes_root(notes_root)?,
+            entity,
+            input_file,
+            input_json,
+        ),
         Command::CaptureLesson {
             db,
             notes_root,
@@ -264,7 +236,14 @@ fn run(command: Command) -> Result<()> {
             body,
             input_file,
             input_json,
-        } => handle_capture_lesson(db, notes_root, slug, body, input_file, input_json),
+        } => handle_capture_lesson(
+            resolve_db_path(db)?,
+            resolve_notes_root(notes_root)?,
+            slug,
+            body,
+            input_file,
+            input_json,
+        ),
         Command::CaptureIssue {
             db,
             notes_root,
@@ -272,7 +251,14 @@ fn run(command: Command) -> Result<()> {
             body,
             input_file,
             input_json,
-        } => handle_capture_issue(db, notes_root, slug, body, input_file, input_json),
+        } => handle_capture_issue(
+            resolve_db_path(db)?,
+            resolve_notes_root(notes_root)?,
+            slug,
+            body,
+            input_file,
+            input_json,
+        ),
         Command::Completions { shell } => {
             handle_completions(shell);
             Ok(())
@@ -282,6 +268,77 @@ fn run(command: Command) -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn resolve_db_path(cli_value: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {
+    if let Some(path) = cli_value {
+        return Ok(path);
+    }
+    if let Some(path) = env_path(DB_ENV)? {
+        return Ok(path);
+    }
+    join_utf8(data_home_base()?, &["knowledge-cli", "knowledge.sqlite3"])
+}
+
+fn resolve_notes_root(cli_value: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {
+    if let Some(path) = cli_value {
+        return Ok(path);
+    }
+    if let Some(path) = env_path(NOTES_ROOT_ENV)? {
+        return Ok(path);
+    }
+    join_utf8(data_home_base()?, &["knowledge-cli", "notes"])
+}
+
+fn resolve_source_file(cli_value: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {
+    if let Some(path) = cli_value {
+        return Ok(path);
+    }
+    if let Some(path) = env_path(SOURCE_FILE_ENV)? {
+        return Ok(path);
+    }
+    join_utf8(
+        config_home_base()?,
+        &["knowledge-cli", "sources.example.json"],
+    )
+}
+
+fn env_path(name: &str) -> Result<Option<Utf8PathBuf>> {
+    match env::var_os(name) {
+        Some(value) => utf8_from_path(PathBuf::from(value), name).map(Some),
+        None => Ok(None),
+    }
+}
+
+fn data_home_base() -> Result<Utf8PathBuf> {
+    let data_dir =
+        dirs::data_local_dir().or_else(|| dirs::home_dir().map(|home| home.join(".local/share")));
+    let base = data_dir.unwrap_or_else(|| PathBuf::from("."));
+    utf8_from_path(base, "data_home")
+}
+
+fn config_home_base() -> Result<Utf8PathBuf> {
+    let config_dir =
+        dirs::config_dir().or_else(|| dirs::home_dir().map(|home| home.join(".config")));
+    let base = config_dir.unwrap_or_else(|| PathBuf::from("."));
+    utf8_from_path(base, "config_home")
+}
+
+fn join_utf8(base: Utf8PathBuf, segments: &[&str]) -> Result<Utf8PathBuf> {
+    let mut path = base.into_std_path_buf();
+    for segment in segments {
+        path.push(segment);
+    }
+    utf8_from_path(path, "default path")
+}
+
+fn utf8_from_path(path: PathBuf, context: &str) -> Result<Utf8PathBuf> {
+    Utf8PathBuf::from_path_buf(path).map_err(|invalid| {
+        anyhow::anyhow!(
+            "path for {context} is not valid UTF-8: {}",
+            invalid.display()
+        )
+    })
 }
 
 fn parse_payload<T: for<'de> Deserialize<'de>>(
@@ -319,8 +376,9 @@ fn handle_init(
         apply_source_json(&conn, &source_json, "--source-json")
             .context("failed to apply source JSON from --source-json")?;
     } else {
+        let source_hint = resolve_source_file(None)?;
         anyhow::bail!(
-            "exactly one input is required: pass --source-file <path> or --source-json <escaped-json>\nexample: knowledge-cli init --source-file {DEFAULT_SOURCE_FILE}"
+            "exactly one input is required: pass --source-file <path> or --source-json <escaped-json>\nexample: knowledge-cli init --source-file {source_hint}"
         )
     }
 
