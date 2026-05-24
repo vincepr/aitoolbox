@@ -2,6 +2,7 @@ use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::model::{EntityKind, RelationshipKind};
+use crate::notes::NoteStore;
 
 #[derive(Debug, Clone)]
 pub struct EntityInput {
@@ -42,6 +43,24 @@ pub struct EntityRecord {
 pub struct ExactLookup {
     pub entity: EntityRecord,
     pub related: Vec<EntityRecord>,
+}
+
+#[derive(Debug, Clone)]
+pub struct QueryAnswer {
+    pub canonical_name: String,
+    pub summary: String,
+    pub navigation_hints: Vec<String>,
+}
+
+pub fn first_paragraph(markdown: &str) -> String {
+    markdown
+        .lines()
+        .skip_while(|line| line.trim().is_empty() || line.starts_with('#'))
+        .take_while(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
 }
 
 pub struct KnowledgeStore<'a> {
@@ -92,6 +111,19 @@ impl<'a> KnowledgeStore<'a> {
             VALUES (?1, ?2, ?3)
             ",
             params![from_id, to_id, kind.as_str()],
+        )?;
+        Ok(())
+    }
+
+    pub fn attach_note(&self, entity_id: i64, note_path: &str) -> Result<()> {
+        self.conn.execute(
+            "
+            INSERT INTO note_refs (entity_id, note_path)
+            VALUES (?1, ?2)
+            ON CONFLICT(entity_id) DO UPDATE SET
+                note_path = excluded.note_path
+            ",
+            params![entity_id, note_path],
         )?;
         Ok(())
     }
@@ -164,6 +196,33 @@ impl<'a> KnowledgeStore<'a> {
             .collect::<rusqlite::Result<Vec<_>>>()?;
 
         Ok(Some(ExactLookup { entity, related }))
+    }
+
+    pub fn query_exact(&self, query: &str, notes: &NoteStore) -> Result<Option<QueryAnswer>> {
+        let lookup = match self.lookup_exact(query)? {
+            Some(lookup) => lookup,
+            None => return Ok(None),
+        };
+
+        let note_path = self
+            .conn
+            .query_row(
+                "SELECT note_path FROM note_refs WHERE entity_id = ?1",
+                [lookup.entity.id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+
+        let summary = match note_path {
+            Some(path) => first_paragraph(&notes.read_note(&path)?),
+            None => String::new(),
+        };
+
+        Ok(Some(QueryAnswer {
+            canonical_name: lookup.entity.canonical_name,
+            summary,
+            navigation_hints: Vec::new(),
+        }))
     }
 }
 
