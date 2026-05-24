@@ -15,7 +15,7 @@ use std::fs;
     name = "knowledge-cli",
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
-    after_help = "Examples:\n  knowledge-cli init --db .local/knowledge.db --source-file config/knowledge/sources.example.json\n  knowledge-cli init --db .local/knowledge.db --source-json '{\"entities\":[{\"canonical_name\":\"MyCompanyName.Ebay.Custom.Client\",\"kind\":\"library\",\"namespace\":\"MyCompanyName.Ebay.Custom.Client\"}]}'\n  knowledge-cli get --db .local/knowledge.db --notes-root knowledge/notes --input-json '{\"entity\":\"MyCompanyName.Ebay.Custom.Client\"}'\n  knowledge-cli capture-lesson --db .local/knowledge.db --notes-root knowledge/notes --input-json '{\"slug\":\"avoid-global-singleton\",\"body\":\"Global state leaked between tests\"}'\n  knowledge-cli capture-issue --db .local/knowledge.db --notes-root knowledge/notes --input-json '{\"slug\":\"stale-mapping-refresh\",\"body\":\"Need automatic refresh for stale repository paths\"}'"
+    after_help = "Examples:\n  knowledge-cli init --db .local/knowledge.sqlite3 --source-file config/knowledge/sources.example.json\n  knowledge-cli init --db .local/knowledge.sqlite3 --source-json '{\"entities\":[{\"canonical_name\":\"MyCompanyName.Ebay.Custom.Client\",\"kind\":\"library\",\"namespace\":\"MyCompanyName.Ebay.Custom.Client\"}]}'\n  knowledge-cli get --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"entity\":\"MyCompanyName.Ebay.Custom.Client\"}'\n  knowledge-cli capture-lesson --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"slug\":\"avoid-global-singleton\",\"body\":\"Global state leaked between tests\"}'\n  knowledge-cli capture-issue --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"slug\":\"stale-mapping-refresh\",\"body\":\"Need automatic refresh for stale repository paths\"}'"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -26,7 +26,7 @@ struct Cli {
 enum Command {
     #[command(about = "Initialize or refresh the knowledge database from a source JSON file")]
     Init {
-        #[arg(long, help = "Path to the SQLite database file to create or update")]
+        #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite database file to create or update")]
         db: Utf8PathBuf,
         #[arg(
             long,
@@ -45,7 +45,7 @@ enum Command {
     },
     #[command(about = "Resolve an entity by exact identifier and print its summary")]
     Get {
-        #[arg(long, help = "Path to the SQLite knowledge database")]
+        #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite knowledge database")]
         db: Utf8PathBuf,
         #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
@@ -66,7 +66,7 @@ enum Command {
     },
     #[command(about = "Capture a reusable lesson note and register it in the knowledge store")]
     CaptureLesson {
-        #[arg(long, help = "Path to the SQLite knowledge database")]
+        #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite knowledge database")]
         db: Utf8PathBuf,
         #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
@@ -87,7 +87,7 @@ enum Command {
     },
     #[command(about = "Capture a workflow or architecture issue and register it in the knowledge store")]
     CaptureIssue {
-        #[arg(long, help = "Path to the SQLite knowledge database")]
+        #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite knowledge database")]
         db: Utf8PathBuf,
         #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
