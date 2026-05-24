@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 use knowledge_core::capture::{capture_issue, capture_lesson};
@@ -26,7 +26,11 @@ struct Cli {
 enum Command {
     #[command(about = "Initialize or refresh the knowledge database from a source JSON file")]
     Init {
-        #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite database file to create or update")]
+        #[arg(
+            long,
+            default_value = ".local/knowledge.sqlite3",
+            help = "Path to the SQLite database file to create or update"
+        )]
         db: Utf8PathBuf,
         #[arg(
             long,
@@ -45,7 +49,11 @@ enum Command {
     },
     #[command(about = "Resolve an entity by exact identifier and print its summary")]
     Get {
-        #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite knowledge database")]
+        #[arg(
+            long,
+            default_value = ".local/knowledge.sqlite3",
+            help = "Path to the SQLite knowledge database"
+        )]
         db: Utf8PathBuf,
         #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
@@ -66,7 +74,11 @@ enum Command {
     },
     #[command(about = "Capture a reusable lesson note and register it in the knowledge store")]
     CaptureLesson {
-        #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite knowledge database")]
+        #[arg(
+            long,
+            default_value = ".local/knowledge.sqlite3",
+            help = "Path to the SQLite knowledge database"
+        )]
         db: Utf8PathBuf,
         #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
@@ -85,9 +97,15 @@ enum Command {
         )]
         input_json: Option<String>,
     },
-    #[command(about = "Capture a workflow or architecture issue and register it in the knowledge store")]
+    #[command(
+        about = "Capture a workflow or architecture issue and register it in the knowledge store"
+    )]
     CaptureIssue {
-        #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite knowledge database")]
+        #[arg(
+            long,
+            default_value = ".local/knowledge.sqlite3",
+            help = "Path to the SQLite knowledge database"
+        )]
         db: Utf8PathBuf,
         #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
@@ -125,7 +143,8 @@ fn load_json_input(
     context: &str,
 ) -> Result<String> {
     if let Some(path) = input_file {
-        Ok(fs::read_to_string(path.as_std_path())?)
+        fs::read_to_string(path.as_std_path())
+            .with_context(|| format!("failed to read {context} input file: {path}"))
     } else if let Some(json) = input_json {
         Ok(json)
     } else {
@@ -135,21 +154,29 @@ fn load_json_input(
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt().without_time().init();
-    match Cli::parse().command {
+    run(Cli::parse().command)
+}
+
+fn run(command: Command) -> Result<()> {
+    match command {
         Command::Init {
             db,
             source_file,
             source_json,
         } => {
             if let Some(parent) = db.parent() {
-                fs::create_dir_all(parent.as_std_path())?;
+                fs::create_dir_all(parent.as_std_path())
+                    .with_context(|| format!("failed to create database directory: {parent}"))?;
             }
-            let conn = Connection::open(db.as_std_path())?;
-            bootstrap(&conn)?;
+            let conn = Connection::open(db.as_std_path())
+                .with_context(|| format!("failed to open database: {db}"))?;
+            bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
             if let Some(source) = source_file {
-                apply_source_file(&conn, source.as_path())?;
+                apply_source_file(&conn, source.as_path())
+                    .with_context(|| format!("failed to apply source file: {source}"))?;
             } else if let Some(source_json) = source_json {
-                apply_source_json(&conn, &source_json, "--source-json")?;
+                apply_source_json(&conn, &source_json, "--source-json")
+                    .context("failed to apply source JSON from --source-json")?;
             } else {
                 anyhow::bail!("exactly one input is required: pass --source-file <path> or --source-json <escaped-json>")
             }
@@ -160,15 +187,12 @@ fn main() -> Result<()> {
             input_file,
             input_json,
         } => {
-            let conn = Connection::open(db.as_std_path())?;
-            bootstrap(&conn)?;
+            let conn = Connection::open(db.as_std_path())
+                .with_context(|| format!("failed to open database: {db}"))?;
+            bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
             let store = KnowledgeStore::new(&conn);
             let notes = NoteStore::new(notes_root);
-            let payload: GetPayload = serde_json::from_str(&load_json_input(
-                input_file,
-                input_json,
-                "get",
-            )?)?;
+            let payload = parse_payload::<GetPayload>(input_file, input_json, "get")?;
 
             match store.query_exact(&payload.entity, &notes)? {
                 Some(answer) if answer.summary.is_empty() => {
@@ -188,14 +212,12 @@ fn main() -> Result<()> {
             input_file,
             input_json,
         } => {
-            let conn = Connection::open(db.as_std_path())?;
-            bootstrap(&conn)?;
+            let conn = Connection::open(db.as_std_path())
+                .with_context(|| format!("failed to open database: {db}"))?;
+            bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
             let notes = NoteStore::new(notes_root);
-            let payload: CapturePayload = serde_json::from_str(&load_json_input(
-                input_file,
-                input_json,
-                "capture-lesson",
-            )?)?;
+            let payload =
+                parse_payload::<CapturePayload>(input_file, input_json, "capture-lesson")?;
             capture_lesson(&conn, &notes, &payload.slug, &payload.body)?;
         }
         Command::CaptureIssue {
@@ -204,17 +226,23 @@ fn main() -> Result<()> {
             input_file,
             input_json,
         } => {
-            let conn = Connection::open(db.as_std_path())?;
-            bootstrap(&conn)?;
+            let conn = Connection::open(db.as_std_path())
+                .with_context(|| format!("failed to open database: {db}"))?;
+            bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
             let notes = NoteStore::new(notes_root);
-            let payload: CapturePayload = serde_json::from_str(&load_json_input(
-                input_file,
-                input_json,
-                "capture-issue",
-            )?)?;
+            let payload = parse_payload::<CapturePayload>(input_file, input_json, "capture-issue")?;
             capture_issue(&conn, &notes, &payload.slug, &payload.body)?;
         }
     }
 
     Ok(())
+}
+
+fn parse_payload<T: for<'de> Deserialize<'de>>(
+    input_file: Option<Utf8PathBuf>,
+    input_json: Option<String>,
+    context: &str,
+) -> Result<T> {
+    let raw = load_json_input(input_file, input_json, context)?;
+    serde_json::from_str(&raw).with_context(|| format!("failed to parse {context} input JSON"))
 }

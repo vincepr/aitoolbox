@@ -5,6 +5,23 @@ use crate::model::EntityKind;
 use crate::notes::NoteStore;
 use crate::store::{EntityInput, KnowledgeStore};
 
+/// Captures a lesson note and stores it as an entity and note reference.
+///
+/// # Arguments
+///
+/// * `conn` - Open SQLite connection.
+/// * `notes` - Note store used to write markdown content.
+/// * `slug` - Canonical identifier and file stem for the lesson.
+/// * `body` - Markdown body content.
+///
+/// # Returns
+///
+/// The canonical lesson name (`slug`) on success.
+///
+/// # Errors
+///
+/// Returns an error when the slug is invalid, already exists, note writing
+/// fails, or database updates fail.
 pub fn capture_lesson(
     conn: &Connection,
     notes: &NoteStore,
@@ -14,6 +31,23 @@ pub fn capture_lesson(
     capture(conn, notes, slug, body, EntityKind::Lesson, "lesson")
 }
 
+/// Captures an issue note and stores it as an entity and note reference.
+///
+/// # Arguments
+///
+/// * `conn` - Open SQLite connection.
+/// * `notes` - Note store used to write markdown content.
+/// * `slug` - Canonical identifier and file stem for the issue.
+/// * `body` - Markdown body content.
+///
+/// # Returns
+///
+/// The canonical issue name (`slug`) on success.
+///
+/// # Errors
+///
+/// Returns an error when the slug is invalid, already exists, note writing
+/// fails, or database updates fail.
 pub fn capture_issue(
     conn: &Connection,
     notes: &NoteStore,

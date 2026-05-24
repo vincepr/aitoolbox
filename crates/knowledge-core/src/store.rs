@@ -4,17 +4,34 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::model::{EntityKind, RelationshipKind};
 use crate::notes::{validate_note_relative_path, NoteStore};
 
+/// Input payload for creating or updating an entity row.
 #[derive(Debug, Clone)]
 pub struct EntityInput {
+    /// Stable canonical identifier used for exact lookup.
     pub canonical_name: String,
+    /// Entity category.
     pub kind: EntityKind,
+    /// Optional short description.
     pub summary: String,
+    /// Optional namespace alias.
     pub namespace: Option<String>,
+    /// Optional package-name alias.
     pub package_name: Option<String>,
+    /// Optional repository-name alias.
     pub repo_name: Option<String>,
 }
 
 impl EntityInput {
+    /// Creates a minimal entity payload with empty summary and optional fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Canonical entity name.
+    /// * `kind` - Entity category.
+    ///
+    /// # Returns
+    ///
+    /// `EntityInput` initialized for incremental builder-style updates.
     pub fn new(name: &str, kind: EntityKind) -> Self {
         Self {
             canonical_name: name.to_string(),
@@ -26,32 +43,69 @@ impl EntityInput {
         }
     }
 
+    /// Sets the namespace alias.
+    ///
+    /// # Arguments
+    ///
+    /// * `namespace` - Namespace alias value.
+    ///
+    /// # Returns
+    ///
+    /// Updated `EntityInput`.
     pub fn with_namespace(mut self, namespace: &str) -> Self {
         self.namespace = Some(namespace.to_string());
         self
     }
 }
 
+/// Core entity record returned by lookup queries.
 #[derive(Debug, Clone)]
 pub struct EntityRecord {
+    /// SQLite primary key.
     pub id: i64,
+    /// Canonical entity identifier.
     pub canonical_name: String,
+    /// Stored kind string.
     pub kind: String,
 }
 
+/// Exact lookup result containing the matched entity and related neighbors.
 #[derive(Debug, Clone)]
 pub struct ExactLookup {
+    /// Primary matched entity.
     pub entity: EntityRecord,
+    /// Recursively-related entities via relationship edges.
     pub related: Vec<EntityRecord>,
 }
 
+/// Query result rendered by the CLI `get` command.
 #[derive(Debug, Clone)]
 pub struct QueryAnswer {
+    /// Canonical matched entity identifier.
     pub canonical_name: String,
+    /// Extracted note summary.
     pub summary: String,
+    /// Reserved navigation hints for future output expansions.
     pub navigation_hints: Vec<String>,
 }
 
+/// Extracts the first non-heading paragraph from markdown.
+///
+/// # Arguments
+///
+/// * `markdown` - Markdown document text.
+///
+/// # Returns
+///
+/// Single-line paragraph summary. Returns an empty string when no paragraph is found.
+///
+/// # Examples
+///
+/// ```
+/// # use knowledge_core::store::first_paragraph;
+/// let md = "# Header\n\nFirst line\nsecond line\n\nMore text";
+/// assert_eq!(first_paragraph(md), "First line second line");
+/// ```
 pub fn first_paragraph(markdown: &str) -> String {
     markdown
         .lines()
@@ -63,15 +117,38 @@ pub fn first_paragraph(markdown: &str) -> String {
         .to_string()
 }
 
+/// High-level SQLite-backed API for knowledge reads and writes.
 pub struct KnowledgeStore<'a> {
     conn: &'a Connection,
 }
 
 impl<'a> KnowledgeStore<'a> {
+    /// Creates a store using a shared SQLite connection.
+    ///
+    /// # Arguments
+    ///
+    /// * `conn` - Open SQLite connection.
+    ///
+    /// # Returns
+    ///
+    /// New store instance borrowing `conn`.
     pub fn new(conn: &'a Connection) -> Self {
         Self { conn }
     }
 
+    /// Upserts an entity and returns its stable row id.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Entity attributes to insert or update.
+    ///
+    /// # Returns
+    ///
+    /// SQLite row id of the upserted entity.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQL writes or lookups fail.
     pub fn upsert_entity(&self, input: EntityInput) -> Result<i64> {
         self.conn.execute(
             "
@@ -104,6 +181,21 @@ impl<'a> KnowledgeStore<'a> {
         Ok(id)
     }
 
+    /// Links two entities with a typed relationship.
+    ///
+    /// # Arguments
+    ///
+    /// * `from_id` - Source entity id.
+    /// * `to_id` - Destination entity id.
+    /// * `kind` - Relationship category.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the link exists (new or pre-existing).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQL insertion fails.
     pub fn link(&self, from_id: i64, to_id: i64, kind: RelationshipKind) -> Result<()> {
         self.conn.execute(
             "
@@ -115,6 +207,20 @@ impl<'a> KnowledgeStore<'a> {
         Ok(())
     }
 
+    /// Attaches or replaces the note reference for an entity.
+    ///
+    /// # Arguments
+    ///
+    /// * `entity_id` - Entity row id.
+    /// * `note_path` - Validated relative note path.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the reference is persisted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if path validation fails or SQL write fails.
     pub fn attach_note(&self, entity_id: i64, note_path: &str) -> Result<()> {
         validate_note_relative_path(note_path)?;
 
@@ -130,6 +236,19 @@ impl<'a> KnowledgeStore<'a> {
         Ok(())
     }
 
+    /// Resolves one entity via exact identifier/alias matches and loads neighbors.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - Canonical name, namespace, package name, repo name, or alias.
+    ///
+    /// # Returns
+    ///
+    /// `Some(ExactLookup)` when a match exists, otherwise `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQL queries fail.
     pub fn lookup_exact(&self, query: &str) -> Result<Option<ExactLookup>> {
         let entity = self
             .conn
@@ -200,6 +319,21 @@ impl<'a> KnowledgeStore<'a> {
         Ok(Some(ExactLookup { entity, related }))
     }
 
+    /// Resolves an entity and reads summary text from its attached note.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - Exact lookup query string.
+    /// * `notes` - Note store used to read note content.
+    ///
+    /// # Returns
+    ///
+    /// `Some(QueryAnswer)` when an entity exists, otherwise `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQL operations fail, note references are invalid,
+    /// or note files cannot be read.
     pub fn query_exact(&self, query: &str, notes: &NoteStore) -> Result<Option<QueryAnswer>> {
         let lookup = match self.lookup_exact(query)? {
             Some(lookup) => lookup,

@@ -1,6 +1,19 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+/// Creates the SQLite schema required by the knowledge system.
+///
+/// # Arguments
+///
+/// * `conn` - Open SQLite connection to bootstrap.
+///
+/// # Returns
+///
+/// `Ok(())` when all tables and indexes exist.
+///
+/// # Errors
+///
+/// Returns an error when SQL execution fails.
 pub fn bootstrap(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "
