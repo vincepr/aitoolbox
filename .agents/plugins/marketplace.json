@@ -1,0 +1,20 @@
+{
+  "name": "aitoolbox",
+  "interface": {
+    "displayName": "AIToolbox"
+  },
+  "plugins": [
+    {
+      "name": "aitoolbox-knowledge-skills",
+      "source": {
+        "source": "local",
+        "path": "./plugins/aitoolbox-knowledge-skills"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "aitoolbox-knowledge-skills",
+  "description": "Compact knowledge-cli workflow skills: knowledge-update and knowledge-get.",
+  "version": "0.1.0",
+  "author": {
+    "name": "vincepr"
+  },
+  "homepage": "https://github.com/vincepr/aitoolbox",
+  "repository": "https://github.com/vincepr/aitoolbox",
+  "license": "MIT",
+  "keywords": [
+    "knowledge-cli",
+    "skills",
+    "workflow",
+    "retrieval"
+  ]
+}

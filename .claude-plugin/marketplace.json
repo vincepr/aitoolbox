@@ -1,0 +1,18 @@
+{
+  "name": "aitoolbox-marketplace",
+  "description": "Marketplace for AIToolbox Claude plugins.",
+  "owner": {
+    "name": "vincepr"
+  },
+  "plugins": [
+    {
+      "name": "aitoolbox-knowledge-skills",
+      "description": "Compact knowledge-cli workflow skills: knowledge-update and knowledge-get.",
+      "version": "0.1.0",
+      "source": "./plugins/aitoolbox-knowledge-skills",
+      "author": {
+        "name": "vincepr"
+      }
+    }
+  ]
+}
