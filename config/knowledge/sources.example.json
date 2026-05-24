@@ -1,0 +1,24 @@
+{
+  "entities": [
+    {
+      "canonical_name": "marketplaces",
+      "kind": "domain"
+    },
+    {
+      "canonical_name": "ebay",
+      "kind": "system"
+    },
+    {
+      "canonical_name": "ebay-common",
+      "kind": "project",
+      "repo_name": "Common",
+      "local_path": "C:/repos/Ebay/Common",
+      "git_url": "https://MyCompanyName-gitlab.de/marketplaces/ebay/Common.git"
+    },
+    {
+      "canonical_name": "MyCompanyName.Ebay.Custom.Client",
+      "kind": "library",
+      "namespace": "MyCompanyName.Ebay.Custom.Client"
+    }
+  ]
+}
