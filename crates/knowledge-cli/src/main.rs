@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::generate;
 use knowledge_core::capture::{capture_issue, capture_lesson};
 use knowledge_core::import::{apply_source_file, apply_source_json};
 use knowledge_core::notes::NoteStore;
@@ -9,13 +10,19 @@ use knowledge_core::store::KnowledgeStore;
 use rusqlite::Connection;
 use serde::Deserialize;
 use std::fs;
+use std::io;
+
+const DEFAULT_DB_PATH: &str = ".local/knowledge.sqlite3";
+const DEFAULT_NOTES_ROOT: &str = "knowledge/notes";
+const DEFAULT_SOURCE_FILE: &str = "config/knowledge/sources.example.json";
+const DEFAULT_SOURCE_JSON: &str = "{\n  \"entities\": []\n}\n";
 
 #[derive(Parser)]
 #[command(
     name = "knowledge-cli",
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
-    after_help = "Examples:\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'"
+    after_help = "Examples:\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -28,7 +35,7 @@ enum Command {
     Init {
         #[arg(
             long,
-            default_value = ".local/knowledge.sqlite3",
+            default_value = DEFAULT_DB_PATH,
             help = "Path to the SQLite database file to create or update"
         )]
         db: Utf8PathBuf,
@@ -47,17 +54,38 @@ enum Command {
         )]
         source_json: Option<String>,
     },
+    #[command(about = "Create default local files and bootstrap the knowledge database")]
+    Quickstart {
+        #[arg(
+            long,
+            default_value = DEFAULT_DB_PATH,
+            help = "Path to the SQLite knowledge database to initialize"
+        )]
+        db: Utf8PathBuf,
+        #[arg(
+            long,
+            default_value = DEFAULT_NOTES_ROOT,
+            help = "Root directory containing compact knowledge notes"
+        )]
+        notes_root: Utf8PathBuf,
+        #[arg(
+            long,
+            default_value = DEFAULT_SOURCE_FILE,
+            help = "Path to the source JSON file used by init"
+        )]
+        source_file: Utf8PathBuf,
+    },
     #[command(about = "Resolve an entity by exact identifier and print its summary")]
     Get {
         #[arg(
             long,
-            default_value = ".local/knowledge.sqlite3",
+            default_value = DEFAULT_DB_PATH,
             help = "Path to the SQLite knowledge database"
         )]
         db: Utf8PathBuf,
         #[arg(
             long,
-            default_value = "knowledge/notes",
+            default_value = DEFAULT_NOTES_ROOT,
             help = "Root directory containing compact knowledge notes"
         )]
         notes_root: Utf8PathBuf,
@@ -68,15 +96,13 @@ enum Command {
         #[arg(
             long,
             help = "Path to JSON input file: {\"entity\":\"<canonical-name>\"}",
-            conflicts_with = "input_json",
-            conflicts_with = "entity"
+            conflicts_with_all = ["input_json", "entity"]
         )]
         input_file: Option<Utf8PathBuf>,
         #[arg(
             long,
             help = "Escaped JSON input: {\"entity\":\"<canonical-name>\"}",
-            conflicts_with = "input_file",
-            conflicts_with = "entity"
+            conflicts_with_all = ["input_file", "entity"]
         )]
         input_json: Option<String>,
     },
@@ -84,11 +110,15 @@ enum Command {
     CaptureLesson {
         #[arg(
             long,
-            default_value = ".local/knowledge.sqlite3",
+            default_value = DEFAULT_DB_PATH,
             help = "Path to the SQLite knowledge database"
         )]
         db: Utf8PathBuf,
-        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        #[arg(
+            long,
+            default_value = DEFAULT_NOTES_ROOT,
+            help = "Root directory containing compact knowledge notes"
+        )]
         notes_root: Utf8PathBuf,
         #[arg(long, help = "Stable lesson slug used as note identifier")]
         slug: Option<String>,
@@ -115,11 +145,15 @@ enum Command {
     CaptureIssue {
         #[arg(
             long,
-            default_value = ".local/knowledge.sqlite3",
+            default_value = DEFAULT_DB_PATH,
             help = "Path to the SQLite knowledge database"
         )]
         db: Utf8PathBuf,
-        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        #[arg(
+            long,
+            default_value = DEFAULT_NOTES_ROOT,
+            help = "Root directory containing compact knowledge notes"
+        )]
         notes_root: Utf8PathBuf,
         #[arg(long, help = "Stable issue slug used as note identifier")]
         slug: Option<String>,
@@ -140,6 +174,35 @@ enum Command {
         )]
         input_json: Option<String>,
     },
+    #[command(about = "Generate shell completion scripts")]
+    Completions {
+        #[arg(help = "Shell type to generate completions for")]
+        shell: CompletionShell,
+    },
+    #[command(about = "Print a shell alias for a shorter command name")]
+    Alias {
+        #[arg(help = "Shell type to print alias syntax for")]
+        shell: AliasShell,
+    },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum CompletionShell {
+    Bash,
+    Elvish,
+    Fish,
+    #[value(name = "powershell")]
+    PowerShell,
+    Zsh,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum AliasShell {
+    Bash,
+    Fish,
+    #[value(name = "powershell")]
+    PowerShell,
+    Zsh,
 }
 
 #[derive(Deserialize)]
@@ -164,7 +227,9 @@ fn load_json_input(
     } else if let Some(json) = input_json {
         Ok(json)
     } else {
-        anyhow::bail!("exactly one input is required for {context}: pass --input-file <path> or --input-json <escaped-json>")
+        anyhow::bail!(
+            "exactly one input is required for {context}: pass --input-file <path> or --input-json <escaped-json>\nexample: knowledge-cli {context} --input-json '<json-payload>'"
+        )
     }
 }
 
@@ -180,6 +245,11 @@ fn run(command: Command) -> Result<()> {
             source_file,
             source_json,
         } => handle_init(db, source_file, source_json),
+        Command::Quickstart {
+            db,
+            notes_root,
+            source_file,
+        } => handle_quickstart(db, notes_root, source_file),
         Command::Get {
             db,
             notes_root,
@@ -203,6 +273,14 @@ fn run(command: Command) -> Result<()> {
             input_file,
             input_json,
         } => handle_capture_issue(db, notes_root, slug, body, input_file, input_json),
+        Command::Completions { shell } => {
+            handle_completions(shell);
+            Ok(())
+        }
+        Command::Alias { shell } => {
+            print_alias(shell);
+            Ok(())
+        }
     }
 }
 
@@ -232,10 +310,6 @@ fn handle_init(
     source_file: Option<Utf8PathBuf>,
     source_json: Option<String>,
 ) -> Result<()> {
-    if let Some(parent) = db.parent() {
-        fs::create_dir_all(parent.as_std_path())
-            .with_context(|| format!("failed to create database directory: {parent}"))?;
-    }
     let conn = open_bootstrapped_db(&db)?;
 
     if let Some(source) = source_file {
@@ -246,10 +320,37 @@ fn handle_init(
             .context("failed to apply source JSON from --source-json")?;
     } else {
         anyhow::bail!(
-            "exactly one input is required: pass --source-file <path> or --source-json <escaped-json>"
+            "exactly one input is required: pass --source-file <path> or --source-json <escaped-json>\nexample: knowledge-cli init --source-file {DEFAULT_SOURCE_FILE}"
         )
     }
 
+    Ok(())
+}
+
+fn handle_quickstart(
+    db: Utf8PathBuf,
+    notes_root: Utf8PathBuf,
+    source_file: Utf8PathBuf,
+) -> Result<()> {
+    fs::create_dir_all(notes_root.as_std_path())
+        .with_context(|| format!("failed to create notes directory: {notes_root}"))?;
+
+    if let Some(parent) = source_file.parent() {
+        fs::create_dir_all(parent.as_std_path())
+            .with_context(|| format!("failed to create source file directory: {parent}"))?;
+    }
+
+    if !source_file.exists() {
+        fs::write(source_file.as_std_path(), DEFAULT_SOURCE_JSON)
+            .with_context(|| format!("failed to write default source file: {source_file}"))?;
+    }
+
+    handle_init(db.clone(), Some(source_file.clone()), None)?;
+
+    println!("Database ready: {db}");
+    println!("Notes root ready: {notes_root}");
+    println!("Source file ready: {source_file}");
+    println!("Next: knowledge-cli get <entity>");
     Ok(())
 }
 
@@ -277,6 +378,12 @@ fn parse_get_entity(
 ) -> Result<String> {
     if let Some(entity_name) = entity {
         return Ok(entity_name);
+    }
+
+    if input_file.is_none() && input_json.is_none() {
+        anyhow::bail!(
+            "missing lookup input: pass <ENTITY> or one of --input-file/--input-json\nexample: knowledge-cli get marketplaces"
+        );
     }
 
     let payload = parse_payload::<GetPayload>(input_file, input_json, "get")?;
@@ -324,7 +431,7 @@ fn parse_capture_payload(
         (Some(slug), Some(body)) => return Ok(CapturePayload { slug, body }),
         (Some(_), None) | (None, Some(_)) => {
             anyhow::bail!(
-                "both --slug and --body are required together for {context} when not using JSON input"
+                "both --slug and --body are required together for {context} when not using JSON input\nexample: knowledge-cli {context} --slug sample-slug --body 'note text'"
             );
         }
         (None, None) => {}
@@ -345,4 +452,32 @@ fn print_get_result(requested_entity: &str, answer: Option<knowledge_core::store
             println!("No exact entity match found for {}", requested_entity);
         }
     }
+}
+
+fn handle_completions(shell: CompletionShell) {
+    let mut command = Cli::command();
+    let mut stdout = io::stdout();
+    let completion_shell: clap_complete::Shell = shell.into();
+    generate(completion_shell, &mut command, "knowledge-cli", &mut stdout);
+}
+
+impl From<CompletionShell> for clap_complete::Shell {
+    fn from(value: CompletionShell) -> Self {
+        match value {
+            CompletionShell::Bash => clap_complete::Shell::Bash,
+            CompletionShell::Elvish => clap_complete::Shell::Elvish,
+            CompletionShell::Fish => clap_complete::Shell::Fish,
+            CompletionShell::PowerShell => clap_complete::Shell::PowerShell,
+            CompletionShell::Zsh => clap_complete::Shell::Zsh,
+        }
+    }
+}
+
+fn print_alias(shell: AliasShell) {
+    let alias_line = match shell {
+        AliasShell::Bash | AliasShell::Zsh => "alias kno='knowledge-cli'",
+        AliasShell::Fish => "alias kno 'knowledge-cli'",
+        AliasShell::PowerShell => "Set-Alias -Name kno -Value knowledge-cli",
+    };
+    println!("{alias_line}");
 }

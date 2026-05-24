@@ -12,6 +12,9 @@ fn help_lists_knowledge_subcommands() {
         .stdout(predicates::str::contains("Examples:"))
         .stdout(predicates::str::contains("get"))
         .stdout(predicates::str::contains("init"))
+        .stdout(predicates::str::contains("quickstart"))
         .stdout(predicates::str::contains("capture-lesson"))
-        .stdout(predicates::str::contains("capture-issue"));
+        .stdout(predicates::str::contains("capture-issue"))
+        .stdout(predicates::str::contains("completions"))
+        .stdout(predicates::str::contains("alias"));
 }

@@ -25,12 +25,16 @@ Start with the docs in [docs/architecture](/C:/Users/vince/RiderProjects/aitoolb
 Install:
 
 - `cargo install --path crates/knowledge-cli`
+- Optional shell alias: `eval "$(knowledge-cli alias bash)"`
 
 Use:
 
 - `mkdir -p .local`
+- `knowledge-cli quickstart`
 - `knowledge-cli init --source-file config/knowledge/sources.example.json`
 - `knowledge-cli init --source-json '{"entities":[{"canonical_name":"MyCompanyName.Ebay.Custom.Client","kind":"library","namespace":"MyCompanyName.Ebay.Custom.Client"}]}'`
 - `knowledge-cli get MyCompanyName.Ebay.Custom.Client`
 - `knowledge-cli capture-lesson --slug avoid-global-singleton --body "Global state leaked between tests"`
 - `knowledge-cli capture-issue --slug stale-mapping-refresh --body "Need automatic refresh for stale repository paths"`
+- `knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli`
+- `knowledge-cli alias bash`
