@@ -10,7 +10,12 @@ use rusqlite::Connection;
 use std::fs;
 
 #[derive(Parser)]
-#[command(name = "knowledge-cli")]
+#[command(
+    name = "knowledge-cli",
+    about = "Query and capture local engineering knowledge",
+    long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
+    after_help = "Examples:\n  knowledge-cli init --db .local/knowledge.db --source config/knowledge/sources.example.json\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes\n  knowledge-cli capture-lesson avoid-global-singleton \"Global state leaked between tests\" --db .local/knowledge.db --notes-root knowledge/notes\n  knowledge-cli capture-issue stale-mapping-refresh \"Need automatic refresh for stale repository paths\" --db .local/knowledge.db --notes-root knowledge/notes"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -18,26 +23,42 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    #[command(about = "Initialize or refresh the knowledge database from a source JSON file")]
     Init {
-        #[arg(long)]
+        #[arg(long, help = "Path to the SQLite database file to create or update")]
         db: Utf8PathBuf,
-        #[arg(long)]
+        #[arg(long, help = "Path to a JSON source file with knowledge entities")]
         source: Utf8PathBuf,
     },
-    Query {
-        query: String,
-        #[arg(long)]
+    #[command(about = "Resolve an entity by exact identifier and print its summary")]
+    Get {
+        #[arg(help = "Exact entity identifier, such as a namespace or canonical name")]
+        entity: String,
+        #[arg(long, help = "Path to the SQLite knowledge database")]
         db: Utf8PathBuf,
-        #[arg(long)]
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
     },
-    Capture {
-        kind: String,
+    #[command(about = "Capture a reusable lesson note and register it in the knowledge store")]
+    CaptureLesson {
+        #[arg(help = "Stable lesson slug, used in generated entity and note names")]
         slug: String,
+        #[arg(help = "Short lesson content that explains the mistake and rule")]
         body: String,
-        #[arg(long)]
+        #[arg(long, help = "Path to the SQLite knowledge database")]
         db: Utf8PathBuf,
-        #[arg(long)]
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        notes_root: Utf8PathBuf,
+    },
+    #[command(about = "Capture a workflow or architecture issue and register it in the knowledge store")]
+    CaptureIssue {
+        #[arg(help = "Stable issue slug, used in generated entity and note names")]
+        slug: String,
+        #[arg(help = "Short issue content describing the problem and impact")]
+        body: String,
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Utf8PathBuf,
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
     },
 }
@@ -53,8 +74,8 @@ fn main() -> Result<()> {
             bootstrap(&conn)?;
             apply_source_file(&conn, source.as_path())?;
         }
-        Command::Query {
-            query,
+        Command::Get {
+            entity,
             db,
             notes_root,
         } => {
@@ -62,7 +83,7 @@ fn main() -> Result<()> {
             bootstrap(&conn)?;
             let store = KnowledgeStore::new(&conn);
             let notes = NoteStore::new(notes_root);
-            match store.query_exact(&query, &notes)? {
+            match store.query_exact(&entity, &notes)? {
                 Some(answer) if answer.summary.is_empty() => {
                     println!("{}\nNo note summary stored", answer.canonical_name);
                 }
@@ -70,12 +91,11 @@ fn main() -> Result<()> {
                     println!("{}\n{}", answer.canonical_name, answer.summary);
                 }
                 None => {
-                    println!("No exact entity match found for {query}");
+                    println!("No exact entity match found for {entity}");
                 }
             }
         }
-        Command::Capture {
-            kind,
+        Command::CaptureLesson {
             slug,
             body,
             db,
@@ -84,15 +104,18 @@ fn main() -> Result<()> {
             let conn = Connection::open(db.as_std_path())?;
             bootstrap(&conn)?;
             let notes = NoteStore::new(notes_root);
-            match kind.as_str() {
-                "lesson" => {
-                    capture_lesson(&conn, &notes, &slug, &body)?;
-                }
-                "issue" => {
-                    capture_issue(&conn, &notes, &slug, &body)?;
-                }
-                other => anyhow::bail!("unsupported capture kind: {other}"),
-            }
+            capture_lesson(&conn, &notes, &slug, &body)?;
+        }
+        Command::CaptureIssue {
+            slug,
+            body,
+            db,
+            notes_root,
+        } => {
+            let conn = Connection::open(db.as_std_path())?;
+            bootstrap(&conn)?;
+            let notes = NoteStore::new(notes_root);
+            capture_issue(&conn, &notes, &slug, &body)?;
         }
     }
 

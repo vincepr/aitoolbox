@@ -6,8 +6,12 @@ fn help_lists_knowledge_subcommands() {
     cmd.arg("--help")
         .assert()
         .success()
-        .stdout(predicates::str::contains("knowledge"))
-        .stdout(predicates::str::contains("query"))
+        .stdout(predicates::str::contains(
+            "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.",
+        ))
+        .stdout(predicates::str::contains("Examples:"))
+        .stdout(predicates::str::contains("get"))
         .stdout(predicates::str::contains("init"))
-        .stdout(predicates::str::contains("capture"));
+        .stdout(predicates::str::contains("capture-lesson"))
+        .stdout(predicates::str::contains("capture-issue"));
 }

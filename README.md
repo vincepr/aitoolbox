@@ -30,4 +30,6 @@ Use:
 
 - `mkdir -p .local`
 - `knowledge-cli init --db .local/knowledge.db --source config/knowledge/sources.example.json`
-- `knowledge-cli query MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes`
+- `knowledge-cli get MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes`
+- `knowledge-cli capture-lesson avoid-global-singleton "Global state leaked between tests" --db .local/knowledge.db --notes-root knowledge/notes`
+- `knowledge-cli capture-issue stale-mapping-refresh "Need automatic refresh for stale repository paths" --db .local/knowledge.db --notes-root knowledge/notes`

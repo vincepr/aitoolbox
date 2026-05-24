@@ -4,7 +4,7 @@ use std::fs;
 use tempfile::tempdir;
 
 #[test]
-fn query_command_returns_summary_and_missing_mapping_message() {
+fn get_command_returns_summary_and_missing_mapping_message() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");
     let notes = temp.path().join("notes");
@@ -39,7 +39,7 @@ fn query_command_returns_summary_and_missing_mapping_message() {
     Command::cargo_bin("knowledge-cli")
         .unwrap()
         .args([
-            "query",
+            "get",
             "MyCompanyName.Ebay.Custom.Client",
             "--db",
             db.to_str().unwrap(),
