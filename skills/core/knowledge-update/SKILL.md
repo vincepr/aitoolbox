@@ -15,8 +15,8 @@ Use this skill to initialize or refresh the local knowledge store with minimal o
 1. Check installed vs latest release version:
    - local: `knowledge-cli version` (or `missing` if command is unavailable)
    - latest: `curl -fsSL https://api.github.com/repos/vincepr/aitoolbox/releases/latest | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p' | head -n1`
-2. If local major version differs from latest major version, run DB migration first:
-   - `bash scripts/migrate-knowledge-db.sh`
+2. If local major version differs from latest major version, run DB migration(s) first:
+   - like `bash scripts/migrate-knowledge-db.sh` and follow migration guidance.
    - if the migration script is missing or blocked, stop and ask the user before continuing.
 3. If missing/outdated, install or update:
    - `cargo install --path crates/knowledge-cli --locked`

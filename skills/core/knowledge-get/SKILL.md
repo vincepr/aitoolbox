@@ -1,6 +1,6 @@
 ---
 name: knowledge-get
-description: "Resolve knowledge queries via knowledge-cli with exact-first lookup, compact answers, and embedded lesson/issue application."
+description: "Resolve knowledge queries (repo locoations and domain contexts) via knowledge-cli with exact-first lookup, compact answers, and embedded lesson/issue application."
 ---
 
 # knowledge-get
