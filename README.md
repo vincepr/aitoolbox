@@ -19,3 +19,10 @@ The design favors:
 - execution-mode support from the start: in-place, container, isolated worktree
 
 Start with the docs in [docs/architecture](/C:/Users/vince/RiderProjects/aitoolbox/docs/architecture/README.md) and [docs/ideas](/C:/Users/vince/RiderProjects/aitoolbox/docs/ideas/README.md).
+
+## Knowledge CLI
+
+Use the local knowledge tool to initialize a small SQLite store and query exact identifiers:
+
+- `cargo run -p knowledge-cli -- init --db .local/knowledge.db --source config/knowledge/sources.example.json`
+- `cargo run -p knowledge-cli -- query MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes`

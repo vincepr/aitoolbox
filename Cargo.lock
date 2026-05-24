@@ -334,8 +334,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "camino",
  "clap",
+ "knowledge-core",
  "predicates",
+ "rusqlite",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
