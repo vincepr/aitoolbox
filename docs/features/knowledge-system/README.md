@@ -1,5 +1,10 @@
 # Knowledge System
 
+## Status
+- `Partial`
+- Implemented: SQLite-backed store, exact lookup, init/import, lesson/issue capture, quickstart/get/version CLI flows
+- Not yet implemented: semantic retrieval (FTS/vector), richer graph/session caching flows
+
 ## Summary
 
 Add a local knowledge system that helps the CLI resolve company-specific architecture, repos, libraries, domains, lessons, and workflow issues without polluting normal prompt context.
@@ -257,14 +262,18 @@ Example failure outcomes:
 
 This is important for trust. The system should show what it knows, what it does not know, and why it recommends the next step.
 
-## Expected Outputs
+## Current Output Snapshot
 
-- a local SQLite-backed knowledge store
-- a compact entity and relationship model for domains, systems, projects, libraries, tags, lessons, and issues
-- a retrieval skill that uses exact lookup first and semantic lookup second
-- an initialization/update skill for building and refreshing the store
-- a capture skill for creating lessons and issues
-- compact agent-facing notes that stay readable because noisy lookup metadata remains hidden in the database
+Implemented today:
+- local SQLite-backed knowledge store
+- core entity/relationship model and exact lookup path
+- init/update via source import
+- lesson and issue capture
+- CLI commands: `init`, `quickstart`, `get`, `capture-lesson`, `capture-issue`, `version`
+
+Planned / not yet implemented:
+- semantic retrieval (FTS/vector phases)
+- advanced graph/session-aware retrieval layers
 
 ## Open Questions
 

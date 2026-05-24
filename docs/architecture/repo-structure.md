@@ -32,6 +32,12 @@ This repository is organized to support multiple kinds of tooling without forcin
 - `examples/`
   Example setups showing how pieces fit together.
 
+## Directory Materialization
+
+- Empty placeholder directories are not kept in git just to reserve names.
+- Areas like `apps/`, `packages/`, `projects/examples/`, `projects/templates/`, `skills/templates/`, `knowledge/notes/`, and `knowledge/sources/` are created when first used.
+- `.gitkeep` files are only used when an otherwise-empty tracked directory is currently required.
+
 ## Expected Boundary Style
 
 - Rust-first for typed core logic.

@@ -1,5 +1,8 @@
 # Knowledge System Implementation Plan
 
+> **ARCHIVE NOTE:** Historical planning document. Not the current source of truth for shipped behavior.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the first useful local knowledge system for `aitoolbox`: a Rust CLI plus library that stores structured entity metadata in SQLite, keeps compact notes on disk, supports exact lookup first, and captures lessons and issues without external services.

@@ -18,6 +18,8 @@ The design favors:
 - structured storage chosen pragmatically per subsystem
 - execution-mode support from the start: in-place, container, isolated worktree
 
+Note: empty scaffolding folders are created on demand and are not kept in git with placeholder files.
+
 Start with the docs in [docs/architecture](/C:/Users/vince/RiderProjects/aitoolbox/docs/architecture/README.md) and [docs/ideas](/C:/Users/vince/RiderProjects/aitoolbox/docs/ideas/README.md).
 
 ## Knowledge CLI

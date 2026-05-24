@@ -1,5 +1,9 @@
 # Containerized Superpowers Companion
 
+## Status
+- `Planned (not implemented)`
+- No companion skills or runtime tooling are currently shipped in this repository.
+
 ## Summary
 
 Add complementary skills and supporting conventions that allow container-isolated development workflows to work alongside `obra/superpowers` without forking its full methodology.
