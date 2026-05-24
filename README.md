@@ -29,8 +29,8 @@ Install:
 Use:
 
 - `mkdir -p .local`
-- `knowledge-cli init --db .local/knowledge.sqlite3 --source-file config/knowledge/sources.example.json`
-- `knowledge-cli init --db .local/knowledge.sqlite3 --source-json '{"entities":[{"canonical_name":"MyCompanyName.Ebay.Custom.Client","kind":"library","namespace":"MyCompanyName.Ebay.Custom.Client"}]}'`
-- `knowledge-cli get --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{"entity":"MyCompanyName.Ebay.Custom.Client"}'`
-- `knowledge-cli capture-lesson --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{"slug":"avoid-global-singleton","body":"Global state leaked between tests"}'`
-- `knowledge-cli capture-issue --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{"slug":"stale-mapping-refresh","body":"Need automatic refresh for stale repository paths"}'`
+- `knowledge-cli init --source-file config/knowledge/sources.example.json`
+- `knowledge-cli init --source-json '{"entities":[{"canonical_name":"MyCompanyName.Ebay.Custom.Client","kind":"library","namespace":"MyCompanyName.Ebay.Custom.Client"}]}'`
+- `knowledge-cli get MyCompanyName.Ebay.Custom.Client`
+- `knowledge-cli capture-lesson --slug avoid-global-singleton --body "Global state leaked between tests"`
+- `knowledge-cli capture-issue --slug stale-mapping-refresh --body "Need automatic refresh for stale repository paths"`

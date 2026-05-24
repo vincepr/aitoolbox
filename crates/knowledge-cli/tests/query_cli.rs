@@ -54,6 +54,45 @@ fn get_command_returns_summary_and_missing_mapping_message() {
 }
 
 #[test]
+fn get_accepts_positional_entity_with_default_paths() {
+    let temp = tempdir().unwrap();
+    let source = temp.path().join("sources.json");
+    let notes = temp.path().join("knowledge").join("notes");
+
+    fs::create_dir_all(&notes).unwrap();
+    fs::create_dir_all(temp.path().join(".local")).unwrap();
+    fs::write(
+        &source,
+        r#"{
+          "entities": [
+            {
+              "canonical_name": "MyCompanyName.Ebay.Custom.Client",
+              "kind": "library",
+              "namespace": "MyCompanyName.Ebay.Custom.Client"
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["init", "--source-file", source.to_str().unwrap()])
+        .assert()
+        .success();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["get", "MyCompanyName.Ebay.Custom.Client"])
+        .assert()
+        .success()
+        .stdout(contains("MyCompanyName.Ebay.Custom.Client"))
+        .stdout(contains("No note summary stored"));
+}
+
+#[test]
 fn init_reads_source_json_from_source_json_flag() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");
@@ -211,4 +250,51 @@ fn get_input_json_parse_errors_include_command_context() {
         .assert()
         .failure()
         .stderr(contains("failed to parse get input JSON"));
+}
+
+#[test]
+fn capture_lesson_accepts_slug_and_body_flags() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("nested").join("knowledge.db");
+    let notes = temp.path().join("notes");
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "capture-lesson",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "--slug",
+            "avoid-global-singleton",
+            "--body",
+            "Global state leaked between tests",
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn capture_lesson_rejects_partial_field_flags() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("nested").join("knowledge.db");
+    let notes = temp.path().join("notes");
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "capture-lesson",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "--slug",
+            "missing-body",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains(
+            "both --slug and --body are required together for capture-lesson",
+        ));
 }
