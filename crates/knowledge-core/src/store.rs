@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::model::{EntityKind, RelationshipKind};
-use crate::notes::NoteStore;
+use crate::notes::{validate_note_relative_path, NoteStore};
 
 #[derive(Debug, Clone)]
 pub struct EntityInput {
@@ -116,6 +116,8 @@ impl<'a> KnowledgeStore<'a> {
     }
 
     pub fn attach_note(&self, entity_id: i64, note_path: &str) -> Result<()> {
+        validate_note_relative_path(note_path)?;
+
         self.conn.execute(
             "
             INSERT INTO note_refs (entity_id, note_path)
