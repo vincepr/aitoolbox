@@ -163,79 +163,26 @@ fn run(command: Command) -> Result<()> {
             db,
             source_file,
             source_json,
-        } => {
-            if let Some(parent) = db.parent() {
-                fs::create_dir_all(parent.as_std_path())
-                    .with_context(|| format!("failed to create database directory: {parent}"))?;
-            }
-            let conn = Connection::open(db.as_std_path())
-                .with_context(|| format!("failed to open database: {db}"))?;
-            bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
-            if let Some(source) = source_file {
-                apply_source_file(&conn, source.as_path())
-                    .with_context(|| format!("failed to apply source file: {source}"))?;
-            } else if let Some(source_json) = source_json {
-                apply_source_json(&conn, &source_json, "--source-json")
-                    .context("failed to apply source JSON from --source-json")?;
-            } else {
-                anyhow::bail!("exactly one input is required: pass --source-file <path> or --source-json <escaped-json>")
-            }
-        }
+        } => handle_init(db, source_file, source_json),
         Command::Get {
             db,
             notes_root,
             input_file,
             input_json,
-        } => {
-            let conn = Connection::open(db.as_std_path())
-                .with_context(|| format!("failed to open database: {db}"))?;
-            bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
-            let store = KnowledgeStore::new(&conn);
-            let notes = NoteStore::new(notes_root);
-            let payload = parse_payload::<GetPayload>(input_file, input_json, "get")?;
-
-            match store.query_exact(&payload.entity, &notes)? {
-                Some(answer) if answer.summary.is_empty() => {
-                    println!("{}\nNo note summary stored", answer.canonical_name);
-                }
-                Some(answer) => {
-                    println!("{}\n{}", answer.canonical_name, answer.summary);
-                }
-                None => {
-                    println!("No exact entity match found for {}", payload.entity);
-                }
-            }
-        }
+        } => handle_get(db, notes_root, input_file, input_json),
         Command::CaptureLesson {
             db,
             notes_root,
             input_file,
             input_json,
-        } => {
-            let conn = Connection::open(db.as_std_path())
-                .with_context(|| format!("failed to open database: {db}"))?;
-            bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
-            let notes = NoteStore::new(notes_root);
-            let payload =
-                parse_payload::<CapturePayload>(input_file, input_json, "capture-lesson")?;
-            capture_lesson(&conn, &notes, &payload.slug, &payload.body)?;
-        }
+        } => handle_capture_lesson(db, notes_root, input_file, input_json),
         Command::CaptureIssue {
             db,
             notes_root,
             input_file,
             input_json,
-        } => {
-            let conn = Connection::open(db.as_std_path())
-                .with_context(|| format!("failed to open database: {db}"))?;
-            bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
-            let notes = NoteStore::new(notes_root);
-            let payload = parse_payload::<CapturePayload>(input_file, input_json, "capture-issue")?;
-            capture_issue(&conn, &notes, &payload.slug, &payload.body)?;
-        }
+        } => handle_capture_issue(db, notes_root, input_file, input_json),
     }
-
-    Ok(())
 }
 
 fn parse_payload<T: for<'de> Deserialize<'de>>(
@@ -245,4 +192,93 @@ fn parse_payload<T: for<'de> Deserialize<'de>>(
 ) -> Result<T> {
     let raw = load_json_input(input_file, input_json, context)?;
     serde_json::from_str(&raw).with_context(|| format!("failed to parse {context} input JSON"))
+}
+
+fn open_bootstrapped_db(db: &Utf8PathBuf) -> Result<Connection> {
+    let conn = Connection::open(db.as_std_path())
+        .with_context(|| format!("failed to open database: {db}"))?;
+    bootstrap(&conn).context("failed to bootstrap knowledge database schema")?;
+    Ok(conn)
+}
+
+fn handle_init(
+    db: Utf8PathBuf,
+    source_file: Option<Utf8PathBuf>,
+    source_json: Option<String>,
+) -> Result<()> {
+    if let Some(parent) = db.parent() {
+        fs::create_dir_all(parent.as_std_path())
+            .with_context(|| format!("failed to create database directory: {parent}"))?;
+    }
+    let conn = open_bootstrapped_db(&db)?;
+
+    if let Some(source) = source_file {
+        apply_source_file(&conn, source.as_path())
+            .with_context(|| format!("failed to apply source file: {source}"))?;
+    } else if let Some(source_json) = source_json {
+        apply_source_json(&conn, &source_json, "--source-json")
+            .context("failed to apply source JSON from --source-json")?;
+    } else {
+        anyhow::bail!(
+            "exactly one input is required: pass --source-file <path> or --source-json <escaped-json>"
+        )
+    }
+
+    Ok(())
+}
+
+fn handle_get(
+    db: Utf8PathBuf,
+    notes_root: Utf8PathBuf,
+    input_file: Option<Utf8PathBuf>,
+    input_json: Option<String>,
+) -> Result<()> {
+    let conn = open_bootstrapped_db(&db)?;
+    let store = KnowledgeStore::new(&conn);
+    let notes = NoteStore::new(notes_root);
+    let payload = parse_payload::<GetPayload>(input_file, input_json, "get")?;
+    let answer = store.query_exact(&payload.entity, &notes)?;
+    print_get_result(&payload.entity, answer);
+
+    Ok(())
+}
+
+fn handle_capture_lesson(
+    db: Utf8PathBuf,
+    notes_root: Utf8PathBuf,
+    input_file: Option<Utf8PathBuf>,
+    input_json: Option<String>,
+) -> Result<()> {
+    let conn = open_bootstrapped_db(&db)?;
+    let notes = NoteStore::new(notes_root);
+    let payload = parse_payload::<CapturePayload>(input_file, input_json, "capture-lesson")?;
+    capture_lesson(&conn, &notes, &payload.slug, &payload.body)?;
+    Ok(())
+}
+
+fn handle_capture_issue(
+    db: Utf8PathBuf,
+    notes_root: Utf8PathBuf,
+    input_file: Option<Utf8PathBuf>,
+    input_json: Option<String>,
+) -> Result<()> {
+    let conn = open_bootstrapped_db(&db)?;
+    let notes = NoteStore::new(notes_root);
+    let payload = parse_payload::<CapturePayload>(input_file, input_json, "capture-issue")?;
+    capture_issue(&conn, &notes, &payload.slug, &payload.body)?;
+    Ok(())
+}
+
+fn print_get_result(requested_entity: &str, answer: Option<knowledge_core::store::QueryAnswer>) {
+    match answer {
+        Some(answer) if answer.summary.is_empty() => {
+            println!("{}\nNo note summary stored", answer.canonical_name);
+        }
+        Some(answer) => {
+            println!("{}\n{}", answer.canonical_name, answer.summary);
+        }
+        None => {
+            println!("No exact entity match found for {}", requested_entity);
+        }
+    }
 }
