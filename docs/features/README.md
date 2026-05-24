@@ -18,3 +18,10 @@ Suggested structure:
 - `resources.md` for source material, references, and notes
 
 This keeps rough brainstorming in `docs/ideas/` and feature-grade planning here.
+
+
+Status conventions:
+- `Implemented`
+- `Partial`
+- `Planned`
+- `Archived`

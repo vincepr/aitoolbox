@@ -1,5 +1,8 @@
 # Implementation Plan
 
+> **ARCHIVE NOTE:** Historical planning document. Not the current source of truth for shipped behavior.
+
+
 ## Goal
 
 Create additional skills and supporting documentation that work in tandem with `obra/superpowers` to enable containerized development workflows, while keeping the original planning, subagent, review, and TDD methodology largely intact.
