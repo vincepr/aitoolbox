@@ -250,71 +250,13 @@ impl<'a> KnowledgeStore<'a> {
     ///
     /// Returns an error if SQL queries fail.
     pub fn lookup_exact(&self, query: &str) -> Result<Option<ExactLookup>> {
-        let entity = self
-            .conn
-            .query_row(
-                "
-                SELECT id, canonical_name, kind
-                FROM entities e
-                WHERE e.canonical_name = ?1
-                    OR e.namespace = ?1
-                    OR e.package_name = ?1
-                    OR e.repo_name = ?1
-                    OR EXISTS (
-                        SELECT 1
-                        FROM aliases a
-                        WHERE a.entity_id = e.id AND a.alias = ?1
-                    )
-                ORDER BY
-                    CASE
-                        WHEN e.canonical_name = ?1 THEN 1
-                        WHEN e.namespace = ?1 THEN 2
-                        WHEN e.package_name = ?1 THEN 3
-                        WHEN e.repo_name = ?1 THEN 4
-                        ELSE 5
-                    END,
-                    e.canonical_name,
-                    e.id
-                LIMIT 1
-                ",
-                [query],
-                read_entity_record,
-            )
-            .optional()?;
+        let entity = self.find_primary_entity(query)?;
 
         let Some(entity) = entity else {
             return Ok(None);
         };
 
-        let mut stmt = self.conn.prepare(
-            "
-            WITH RECURSIVE related(id, canonical_name, kind) AS (
-                SELECT id, canonical_name, kind
-                FROM entities
-                WHERE id = ?1
-
-                UNION
-
-                SELECT e.id, e.canonical_name, e.kind
-                FROM relationships r
-                JOIN related current
-                    ON r.from_entity_id = current.id OR r.to_entity_id = current.id
-                JOIN entities e
-                    ON e.id = CASE
-                        WHEN r.from_entity_id = current.id THEN r.to_entity_id
-                        ELSE r.from_entity_id
-                    END
-            )
-            SELECT id, canonical_name, kind
-            FROM related
-            WHERE id != ?1
-            ORDER BY canonical_name
-            ",
-        )?;
-
-        let related = stmt
-            .query_map([entity.id], read_entity_record)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let related = self.load_related_entities(entity.id)?;
 
         Ok(Some(ExactLookup { entity, related }))
     }
@@ -359,6 +301,74 @@ impl<'a> KnowledgeStore<'a> {
             summary,
             navigation_hints: Vec::new(),
         }))
+    }
+
+    fn find_primary_entity(&self, query: &str) -> Result<Option<EntityRecord>> {
+        let entity = self
+            .conn
+            .query_row(
+                "
+                SELECT id, canonical_name, kind
+                FROM entities e
+                WHERE e.canonical_name = ?1
+                    OR e.namespace = ?1
+                    OR e.package_name = ?1
+                    OR e.repo_name = ?1
+                    OR EXISTS (
+                        SELECT 1
+                        FROM aliases a
+                        WHERE a.entity_id = e.id AND a.alias = ?1
+                    )
+                ORDER BY
+                    CASE
+                        WHEN e.canonical_name = ?1 THEN 1
+                        WHEN e.namespace = ?1 THEN 2
+                        WHEN e.package_name = ?1 THEN 3
+                        WHEN e.repo_name = ?1 THEN 4
+                        ELSE 5
+                    END,
+                    e.canonical_name,
+                    e.id
+                LIMIT 1
+                ",
+                [query],
+                read_entity_record,
+            )
+            .optional()?;
+        Ok(entity)
+    }
+
+    fn load_related_entities(&self, entity_id: i64) -> Result<Vec<EntityRecord>> {
+        let mut stmt = self.conn.prepare(
+            "
+            WITH RECURSIVE related(id, canonical_name, kind) AS (
+                SELECT id, canonical_name, kind
+                FROM entities
+                WHERE id = ?1
+
+                UNION
+
+                SELECT e.id, e.canonical_name, e.kind
+                FROM relationships r
+                JOIN related current
+                    ON r.from_entity_id = current.id OR r.to_entity_id = current.id
+                JOIN entities e
+                    ON e.id = CASE
+                        WHEN r.from_entity_id = current.id THEN r.to_entity_id
+                        ELSE r.from_entity_id
+                    END
+            )
+            SELECT id, canonical_name, kind
+            FROM related
+            WHERE id != ?1
+            ORDER BY canonical_name
+            ",
+        )?;
+
+        let related = stmt
+            .query_map([entity_id], read_entity_record)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(related)
     }
 }
 

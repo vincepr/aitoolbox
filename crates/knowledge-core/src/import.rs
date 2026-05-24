@@ -131,44 +131,61 @@ impl TryFrom<SourceEntity> for ValidatedSourceEntity {
 
 fn apply_validated_source(conn: &Connection, entities: Vec<ValidatedSourceEntity>) -> Result<()> {
     for entity in entities {
-        conn.execute(
-            "
-            INSERT INTO entities (canonical_name, kind, summary, namespace, package_name, repo_name)
-            VALUES (?1, ?2, '', ?3, ?4, ?5)
-            ON CONFLICT(canonical_name) DO UPDATE SET
-                kind = excluded.kind,
-                namespace = COALESCE(excluded.namespace, entities.namespace),
-                package_name = COALESCE(excluded.package_name, entities.package_name),
-                repo_name = COALESCE(excluded.repo_name, entities.repo_name),
-                updated_at = CURRENT_TIMESTAMP
-            ",
-            params![
-                entity.canonical_name,
-                entity.kind.as_str(),
-                entity.namespace,
-                entity.package_name,
-                entity.repo_name,
-            ],
-        )?;
-
-        let id = conn.query_row(
-            "SELECT id FROM entities WHERE canonical_name = ?1",
-            [entity.canonical_name.as_str()],
-            |row| row.get::<_, i64>(0),
-        )?;
-
-        conn.execute(
-            "
-            INSERT INTO locations (entity_id, local_path, git_url)
-            VALUES (?1, ?2, ?3)
-            ON CONFLICT(entity_id) DO UPDATE SET
-                local_path = COALESCE(excluded.local_path, locations.local_path),
-                git_url = COALESCE(excluded.git_url, locations.git_url)
-            ",
-            params![id, entity.local_path, entity.git_url],
-        )?;
+        upsert_entity_row(conn, &entity)?;
+        let id = fetch_entity_id(conn, &entity.canonical_name)?;
+        upsert_location_row(conn, id, &entity)?;
     }
 
+    Ok(())
+}
+
+fn upsert_entity_row(conn: &Connection, entity: &ValidatedSourceEntity) -> Result<()> {
+    conn.execute(
+        "
+        INSERT INTO entities (canonical_name, kind, summary, namespace, package_name, repo_name)
+        VALUES (?1, ?2, '', ?3, ?4, ?5)
+        ON CONFLICT(canonical_name) DO UPDATE SET
+            kind = excluded.kind,
+            namespace = COALESCE(excluded.namespace, entities.namespace),
+            package_name = COALESCE(excluded.package_name, entities.package_name),
+            repo_name = COALESCE(excluded.repo_name, entities.repo_name),
+            updated_at = CURRENT_TIMESTAMP
+        ",
+        params![
+            entity.canonical_name,
+            entity.kind.as_str(),
+            entity.namespace,
+            entity.package_name,
+            entity.repo_name,
+        ],
+    )?;
+    Ok(())
+}
+
+fn fetch_entity_id(conn: &Connection, canonical_name: &str) -> Result<i64> {
+    let id = conn.query_row(
+        "SELECT id FROM entities WHERE canonical_name = ?1",
+        [canonical_name],
+        |row| row.get::<_, i64>(0),
+    )?;
+    Ok(id)
+}
+
+fn upsert_location_row(
+    conn: &Connection,
+    entity_id: i64,
+    entity: &ValidatedSourceEntity,
+) -> Result<()> {
+    conn.execute(
+        "
+        INSERT INTO locations (entity_id, local_path, git_url)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT(entity_id) DO UPDATE SET
+            local_path = COALESCE(excluded.local_path, locations.local_path),
+            git_url = COALESCE(excluded.git_url, locations.git_url)
+        ",
+        params![entity_id, entity.local_path, entity.git_url],
+    )?;
     Ok(())
 }
 
