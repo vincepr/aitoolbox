@@ -46,6 +46,10 @@ Default path resolution for DB, notes root, and source file is:
 2. environment variable (`KNOWLEDGE_CLI_DB`, `KNOWLEDGE_CLI_NOTES_ROOT`, `KNOWLEDGE_CLI_SOURCE_FILE`)
 3. user-level OS directories (`data_local_dir` / `config_dir`)
 
+Database migration policy:
+- major version change of `knowledge-cli` requires DB migration
+- migration entrypoint: `scripts/migrate-knowledge-db.sh`
+
 ## Install Knowledge Skills (Claude + Codex)
 
 Plugin package path in this repo:
