@@ -5,22 +5,67 @@ use serde::Deserialize;
 
 use crate::model::EntityKind;
 
+/// Top-level JSON source document used for batch import.
 #[derive(Debug, Deserialize)]
 pub struct SourceFile {
+    /// Imported entities to upsert into the store.
     pub entities: Vec<SourceEntity>,
 }
 
+/// A single source entity entry from import JSON.
 #[derive(Debug, Deserialize)]
 pub struct SourceEntity {
+    /// Stable canonical identifier for exact lookup.
     pub canonical_name: String,
+    /// Entity kind string, e.g. `library` or `project`.
     pub kind: String,
+    /// Optional repository name alias for lookup.
     pub repo_name: Option<String>,
+    /// Optional namespace alias for lookup.
     pub namespace: Option<String>,
+    /// Optional package-name alias for lookup.
     pub package_name: Option<String>,
+    /// Optional local filesystem location.
     pub local_path: Option<String>,
+    /// Optional remote Git URL location.
     pub git_url: Option<String>,
 }
 
+/// Applies a source JSON payload to the connected SQLite database.
+///
+/// # Arguments
+///
+/// * `conn` - Open SQLite connection.
+/// * `json` - Source JSON string with a top-level `entities` array.
+/// * `source_label` - Human-readable label included in parse errors.
+///
+/// # Returns
+///
+/// `Ok(())` after all entities and locations are upserted in one transaction.
+///
+/// # Errors
+///
+/// Returns an error if JSON parsing fails, if an entity kind is unsupported,
+/// or if any SQL operation fails.
+///
+/// # Examples
+///
+/// ```
+/// # use anyhow::Result;
+/// # use knowledge_core::import::apply_source_json;
+/// # use knowledge_core::schema::bootstrap;
+/// # use rusqlite::Connection;
+/// # fn demo() -> Result<()> {
+/// let conn = Connection::open_in_memory()?;
+/// bootstrap(&conn)?;
+/// apply_source_json(
+///     &conn,
+///     r#"{"entities":[{"canonical_name":"example.lib","kind":"library"}]}"#,
+///     "--source-json",
+/// )?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn apply_source_json(conn: &Connection, json: &str, source_label: &str) -> Result<()> {
     let source: SourceFile = serde_json::from_str(json)
         .with_context(|| format!("failed to parse source file: {source_label}"))?;
@@ -37,6 +82,21 @@ pub fn apply_source_json(conn: &Connection, json: &str, source_label: &str) -> R
     Ok(())
 }
 
+/// Reads a source JSON file from disk and applies it to the connected database.
+///
+/// # Arguments
+///
+/// * `conn` - Open SQLite connection.
+/// * `path` - UTF-8 path to the source JSON file.
+///
+/// # Returns
+///
+/// `Ok(())` after the file is parsed and applied.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, the JSON is invalid, entity
+/// validation fails, or database writes fail.
 pub fn apply_source_file(conn: &Connection, path: &Utf8Path) -> Result<()> {
     let json = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read source file: {path}"))?;
