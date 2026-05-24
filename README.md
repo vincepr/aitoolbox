@@ -29,7 +29,8 @@ Install:
 Use:
 
 - `mkdir -p .local`
-- `knowledge-cli init --db .local/knowledge.db --source config/knowledge/sources.example.json`
-- `knowledge-cli get MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes`
-- `knowledge-cli capture-lesson avoid-global-singleton "Global state leaked between tests" --db .local/knowledge.db --notes-root knowledge/notes`
-- `knowledge-cli capture-issue stale-mapping-refresh "Need automatic refresh for stale repository paths" --db .local/knowledge.db --notes-root knowledge/notes`
+- `knowledge-cli init --db .local/knowledge.db --source-file config/knowledge/sources.example.json`
+- `knowledge-cli init --db .local/knowledge.db --source-json '{"entities":[{"canonical_name":"MyCompanyName.Ebay.Custom.Client","kind":"library","namespace":"MyCompanyName.Ebay.Custom.Client"}]}'`
+- `knowledge-cli get --db .local/knowledge.db --notes-root knowledge/notes --input-json '{"entity":"MyCompanyName.Ebay.Custom.Client"}'`
+- `knowledge-cli capture-lesson --db .local/knowledge.db --notes-root knowledge/notes --input-json '{"slug":"avoid-global-singleton","body":"Global state leaked between tests"}'`
+- `knowledge-cli capture-issue --db .local/knowledge.db --notes-root knowledge/notes --input-json '{"slug":"stale-mapping-refresh","body":"Need automatic refresh for stale repository paths"}'`

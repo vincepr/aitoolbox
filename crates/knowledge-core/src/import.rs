@@ -21,12 +21,9 @@ pub struct SourceEntity {
     pub git_url: Option<String>,
 }
 
-pub fn apply_source_file(conn: &Connection, path: &Utf8Path) -> Result<()> {
-    let source: SourceFile = serde_json::from_str(
-        &std::fs::read_to_string(path)
-            .with_context(|| format!("failed to read source file: {path}"))?,
-    )
-    .with_context(|| format!("failed to parse source file: {path}"))?;
+pub fn apply_source_json(conn: &Connection, json: &str, source_label: &str) -> Result<()> {
+    let source: SourceFile = serde_json::from_str(json)
+        .with_context(|| format!("failed to parse source file: {source_label}"))?;
     let entities = source
         .entities
         .into_iter()
@@ -38,6 +35,12 @@ pub fn apply_source_file(conn: &Connection, path: &Utf8Path) -> Result<()> {
     tx.commit()?;
 
     Ok(())
+}
+
+pub fn apply_source_file(conn: &Connection, path: &Utf8Path) -> Result<()> {
+    let json = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read source file: {path}"))?;
+    apply_source_json(conn, &json, path.as_str())
 }
 
 struct ValidatedSourceEntity {
