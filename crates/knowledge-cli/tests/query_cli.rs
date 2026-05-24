@@ -93,6 +93,36 @@ fn get_accepts_positional_entity_with_default_paths() {
 }
 
 #[test]
+fn quickstart_creates_defaults_and_initializes_db() {
+    let temp = tempdir().unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .current_dir(temp.path())
+        .args(["quickstart"])
+        .assert()
+        .success()
+        .stdout(contains("Database ready: .local/knowledge.sqlite3"))
+        .stdout(contains("Notes root ready: knowledge/notes"))
+        .stdout(contains(
+            "Source file ready: config/knowledge/sources.example.json",
+        ));
+
+    assert!(temp
+        .path()
+        .join(".local")
+        .join("knowledge.sqlite3")
+        .exists());
+    assert!(temp.path().join("knowledge").join("notes").exists());
+    assert!(temp
+        .path()
+        .join("config")
+        .join("knowledge")
+        .join("sources.example.json")
+        .exists());
+}
+
+#[test]
 fn init_reads_source_json_from_source_json_flag() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");
@@ -256,7 +286,6 @@ fn get_input_json_parse_errors_include_command_context() {
 fn capture_lesson_accepts_slug_and_body_flags() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");
-    let notes = temp.path().join("notes");
 
     Command::cargo_bin("knowledge-cli")
         .unwrap()
@@ -264,8 +293,6 @@ fn capture_lesson_accepts_slug_and_body_flags() {
             "capture-lesson",
             "--db",
             db.to_str().unwrap(),
-            "--notes-root",
-            notes.to_str().unwrap(),
             "--slug",
             "avoid-global-singleton",
             "--body",
@@ -279,7 +306,6 @@ fn capture_lesson_accepts_slug_and_body_flags() {
 fn capture_lesson_rejects_partial_field_flags() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");
-    let notes = temp.path().join("notes");
 
     Command::cargo_bin("knowledge-cli")
         .unwrap()
@@ -287,8 +313,6 @@ fn capture_lesson_rejects_partial_field_flags() {
             "capture-lesson",
             "--db",
             db.to_str().unwrap(),
-            "--notes-root",
-            notes.to_str().unwrap(),
             "--slug",
             "missing-body",
         ])
@@ -297,4 +321,25 @@ fn capture_lesson_rejects_partial_field_flags() {
         .stderr(contains(
             "both --slug and --body are required together for capture-lesson",
         ));
+}
+
+#[test]
+fn completions_generates_bash_script() {
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .stdout(contains("knowledge-cli"))
+        .stdout(contains("complete"));
+}
+
+#[test]
+fn alias_prints_shell_snippet() {
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args(["alias", "bash"])
+        .assert()
+        .success()
+        .stdout(contains("alias kno='knowledge-cli'"));
 }
