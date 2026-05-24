@@ -8,10 +8,11 @@ It should not be required to add all these params. There should be sensible defa
 - init should also create missing default files if missing (again with sensible defaults) (MyCompanyName.Ebay.Custom.Client is no sensbile default! Its just a example)
 
 ## Streamline default usage
-- knowledge-cli query MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes
-
-This is quite cluncy usage. I want to keep the most used clownledge-cli commands simple and fast. Also lets shorten knowledge-cli with suitable alias (that is not already commonly taken in linux/windows/mac).
-- knowledge-cli query MyCompanyName.Ebay.Custom.Client -> this returns sensible defaults already
+- Done:
+  - `knowledge-cli get MyCompanyName.Ebay.Custom.Client`
+  - `knowledge-cli query MyCompanyName.Ebay.Custom.Client` (alias to `get`)
+  - defaults now apply for DB and notes root
+  - short binary alias `knwl` is available
 
 ## Rework explorability, imporove self discoverability
 - Unexplained flags are bad for a cli tool. Because it requires knowledge about how to query/use them.
@@ -53,4 +54,3 @@ vincep@DESKTOP-MH64D1J:~/aitoolbox$
 
 ## pipeline to build releases via github actions
 - I want tagged versioned releases of the cli. (For ubuntu aswell as mac)
-

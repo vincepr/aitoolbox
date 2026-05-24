@@ -3,6 +3,15 @@ name = "knowledge-cli"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
+default-run = "knowledge-cli"
+
+[[bin]]
+name = "knowledge-cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "knwl"
+path = "src/bin/knwl.rs"
 
 [dependencies]
 anyhow.workspace = true

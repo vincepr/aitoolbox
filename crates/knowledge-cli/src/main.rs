@@ -15,7 +15,7 @@ use std::fs;
     name = "knowledge-cli",
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
-    after_help = "Examples:\n  knowledge-cli init --db .local/knowledge.sqlite3 --source-file config/knowledge/sources.example.json\n  knowledge-cli init --db .local/knowledge.sqlite3 --source-json '{\"entities\":[{\"canonical_name\":\"MyCompanyName.Ebay.Custom.Client\",\"kind\":\"library\",\"namespace\":\"MyCompanyName.Ebay.Custom.Client\"}]}'\n  knowledge-cli get --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"entity\":\"MyCompanyName.Ebay.Custom.Client\"}'\n  knowledge-cli capture-lesson --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"slug\":\"avoid-global-singleton\",\"body\":\"Global state leaked between tests\"}'\n  knowledge-cli capture-issue --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{\"slug\":\"stale-mapping-refresh\",\"body\":\"Need automatic refresh for stale repository paths\"}'"
+    after_help = "Examples:\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli init --source-json '{\"entities\":[{\"canonical_name\":\"MyCompanyName.Ebay.Custom.Client\",\"kind\":\"library\",\"namespace\":\"MyCompanyName.Ebay.Custom.Client\"}]}'\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client\n  knowledge-cli query MyCompanyName.Ebay.Custom.Client\n  knowledge-cli capture-lesson --input-json '{\"slug\":\"avoid-global-singleton\",\"body\":\"Global state leaked between tests\"}'\n  knowledge-cli capture-issue --input-json '{\"slug\":\"stale-mapping-refresh\",\"body\":\"Need automatic refresh for stale repository paths\"}'"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -43,24 +43,28 @@ enum Command {
         )]
         source_json: Option<String>,
     },
-    #[command(about = "Resolve an entity by exact identifier and print its summary")]
+    #[command(
+        about = "Resolve an entity by exact identifier and print its summary",
+        visible_alias = "query",
+        visible_alias = "q"
+    )]
     Get {
+        #[arg(help = "Exact entity identifier, such as a namespace or canonical name")]
+        entity: Option<String>,
         #[arg(long, default_value = ".local/knowledge.sqlite3", help = "Path to the SQLite knowledge database")]
         db: Utf8PathBuf,
-        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        #[arg(long, default_value = "knowledge/notes", help = "Root directory containing compact knowledge notes")]
         notes_root: Utf8PathBuf,
         #[arg(
             long,
             help = "Path to JSON input file: {\"entity\":\"<canonical-name>\"}",
-            conflicts_with = "input_json",
-            required_unless_present = "input_json"
+            conflicts_with_all = ["input_json", "entity"]
         )]
         input_file: Option<Utf8PathBuf>,
         #[arg(
             long,
             help = "Escaped JSON input: {\"entity\":\"<canonical-name>\"}",
-            conflicts_with = "input_file",
-            required_unless_present = "input_file"
+            conflicts_with_all = ["input_file", "entity"]
         )]
         input_json: Option<String>,
     },
@@ -133,6 +137,18 @@ fn load_json_input(
     }
 }
 
+fn parse_get_entity(
+    entity: Option<String>,
+    input_file: Option<Utf8PathBuf>,
+    input_json: Option<String>,
+) -> Result<String> {
+    if let Some(entity) = entity {
+        return Ok(entity);
+    }
+    let payload: GetPayload = serde_json::from_str(&load_json_input(input_file, input_json, "get")?)?;
+    Ok(payload.entity)
+}
+
 fn main() -> Result<()> {
     tracing_subscriber::fmt().without_time().init();
     match Cli::parse().command {
@@ -155,6 +171,7 @@ fn main() -> Result<()> {
             }
         }
         Command::Get {
+            entity,
             db,
             notes_root,
             input_file,
@@ -164,13 +181,9 @@ fn main() -> Result<()> {
             bootstrap(&conn)?;
             let store = KnowledgeStore::new(&conn);
             let notes = NoteStore::new(notes_root);
-            let payload: GetPayload = serde_json::from_str(&load_json_input(
-                input_file,
-                input_json,
-                "get",
-            )?)?;
+            let entity = parse_get_entity(entity, input_file, input_json)?;
 
-            match store.query_exact(&payload.entity, &notes)? {
+            match store.query_exact(&entity, &notes)? {
                 Some(answer) if answer.summary.is_empty() => {
                     println!("{}\nNo note summary stored", answer.canonical_name);
                 }
@@ -178,7 +191,7 @@ fn main() -> Result<()> {
                     println!("{}\n{}", answer.canonical_name, answer.summary);
                 }
                 None => {
-                    println!("No exact entity match found for {}", payload.entity);
+                    println!("No exact entity match found for {}", entity);
                 }
             }
         }

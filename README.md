@@ -25,12 +25,14 @@ Start with the docs in [docs/architecture](/C:/Users/vince/RiderProjects/aitoolb
 Install:
 
 - `cargo install --path crates/knowledge-cli`
+- installs `knowledge-cli` and short alias `knwl`
 
 Use:
 
 - `mkdir -p .local`
-- `knowledge-cli init --db .local/knowledge.sqlite3 --source-file config/knowledge/sources.example.json`
-- `knowledge-cli init --db .local/knowledge.sqlite3 --source-json '{"entities":[{"canonical_name":"MyCompanyName.Ebay.Custom.Client","kind":"library","namespace":"MyCompanyName.Ebay.Custom.Client"}]}'`
-- `knowledge-cli get --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{"entity":"MyCompanyName.Ebay.Custom.Client"}'`
-- `knowledge-cli capture-lesson --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{"slug":"avoid-global-singleton","body":"Global state leaked between tests"}'`
-- `knowledge-cli capture-issue --db .local/knowledge.sqlite3 --notes-root knowledge/notes --input-json '{"slug":"stale-mapping-refresh","body":"Need automatic refresh for stale repository paths"}'`
+- `knowledge-cli init --source-file config/knowledge/sources.example.json`
+- `knowledge-cli get MyCompanyName.Ebay.Custom.Client`
+- `knowledge-cli query MyCompanyName.Ebay.Custom.Client`
+- `knwl get MyCompanyName.Ebay.Custom.Client`
+- `knowledge-cli capture-lesson --input-json '{"slug":"avoid-global-singleton","body":"Global state leaked between tests"}'`
+- `knowledge-cli capture-issue --input-json '{"slug":"stale-mapping-refresh","body":"Need automatic refresh for stale repository paths"}'`
