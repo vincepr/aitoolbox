@@ -9,7 +9,7 @@ fn help_lists_knowledge_subcommands() {
         .stdout(predicates::str::contains(
             "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.",
         ))
-        .stdout(predicates::str::contains("Examples:"))
+        .stdout(predicates::str::contains("Examples (normal):"))
         .stdout(predicates::str::contains("get"))
         .stdout(predicates::str::contains("init"))
         .stdout(predicates::str::contains("quickstart"))

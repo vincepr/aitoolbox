@@ -37,6 +37,9 @@ Use:
 - `knowledge-cli capture-issue --slug stale-mapping-refresh --body "Need automatic refresh for stale repository paths"`
 - `knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli`
 - `knowledge-cli alias bash`
+- Edge-case override style (keep DB/notes flags at the end):
+- `knowledge-cli get MyCompanyName.Ebay.Custom.Client --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes`
+- `knowledge-cli capture-lesson --slug avoid-global-singleton --body "Global state leaked between tests" --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes`
 
 Default path resolution for DB, notes root, and source file is:
 1. explicit CLI flag
