@@ -1,16 +1,11 @@
 ---
 name: knowledge-get
-description: "Resolve package/library/namespace/repo knowledge via knowledge-cli using exact-first lookup, compact answers, and embedded lesson/issue actions."
+description: "Resolve knowledge queries (repo locoations and domain contexts) via knowledge-cli with exact-first lookup, compact answers, and embedded lesson/issue application."
 ---
 
 # knowledge-get
 
-Use this skill to resolve package, library, namespace, repo, domain, system, and entity questions with concise confidence-scored output.
-
-## When To Use
-- Resolve which repo/path owns a package or namespace.
-- Map a library identifier to canonical entity context.
-- Retrieve prior lessons/issues relevant to a package-level task.
+Use this skill to answer repo/domain/system/entity questions with concise confidence-scored output.
 
 ## Inputs
 - Query text or exact identifier.
