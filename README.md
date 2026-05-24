@@ -45,3 +45,21 @@ Default path resolution for DB, notes root, and source file is:
 1. explicit CLI flag
 2. environment variable (`KNOWLEDGE_CLI_DB`, `KNOWLEDGE_CLI_NOTES_ROOT`, `KNOWLEDGE_CLI_SOURCE_FILE`)
 3. user-level OS directories (`data_local_dir` / `config_dir`)
+
+## Install Knowledge Skills (Claude + Codex)
+
+Plugin package path in this repo:
+- `plugins/aitoolbox-knowledge-skills`
+
+Codex:
+- Install from repo plugin path:
+  - `npx codex-marketplace add vincepr/aitoolbox/plugins/aitoolbox-knowledge-skills --plugin --project`
+- Or add repo marketplace and install from it:
+  - `codex plugin marketplace add .`
+  - `codex plugin install aitoolbox-knowledge-skills@aitoolbox`
+
+Claude Code:
+- Add repo marketplace:
+  - `/plugin marketplace add vincepr/aitoolbox`
+- Install plugin:
+  - `/plugin install aitoolbox-knowledge-skills@aitoolbox-marketplace`
