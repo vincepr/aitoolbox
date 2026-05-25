@@ -222,7 +222,7 @@ git commit -m "feat: add typed config precedence and startup validation"
 - Test: `crates/knowledge-core/tests/recall_ranking.rs` (create)
 - Test: `crates/knowledge-cli/tests/eval_cli.rs` (create)
 
-- [ ] **Step 1: Write failing deterministic ranking test**
+- [x] **Step 1: Write failing deterministic ranking test**
 ```rust
 #[test]
 fn recall_order_is_stable_for_same_input() {
@@ -232,22 +232,22 @@ fn recall_order_is_stable_for_same_input() {
 }
 ```
 
-- [ ] **Step 2: Run test to confirm failure**
+- [x] **Step 2: Run test to confirm failure**
 Run: `cargo test -p knowledge-core recall_ranking -v`
 Expected: FAIL until ranking implementation.
 
-- [ ] **Step 3: Implement scoring and tie-breaks**
+- [x] **Step 3: Implement scoring and tie-breaks**
 ```rust
 fn total_score(s: &ScoreParts) -> i64 {
     s.exact * 1000 + s.alias * 500 + s.fts * 100 + s.graph * 10 - s.name_penalty
 }
 ```
 
-- [ ] **Step 4: Run retrieval and eval tests**
+- [x] **Step 4: Run retrieval and eval tests**
 Run: `cargo test -p knowledge-core recall_ranking -v && cargo test -p knowledge-cli eval_cli -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add crates/knowledge-core/src/recall.rs crates/knowledge-core/src/store.rs crates/knowledge-cli/src/main.rs crates/knowledge-core/tests/recall_ranking.rs crates/knowledge-cli/tests/eval_cli.rs
 git commit -m "feat: add deterministic hybrid recall and eval harness"

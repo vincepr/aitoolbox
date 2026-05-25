@@ -12,6 +12,8 @@ pub mod migrations;
 pub mod model;
 /// Filesystem-backed note store utilities.
 pub mod notes;
+/// Deterministic hybrid recall and telemetry helpers.
+pub mod recall;
 /// SQLite schema bootstrap and version verification for the knowledge store.
 pub mod schema;
 /// Query and mutation APIs for the knowledge store.
