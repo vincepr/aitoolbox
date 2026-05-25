@@ -261,7 +261,7 @@ git commit -m "feat: add deterministic hybrid recall and eval harness"
 - Modify: `crates/knowledge-cli/src/main.rs`
 - Test: `crates/knowledge-core/tests/ingest_pipeline.rs` (create)
 
-- [ ] **Step 1: Write failing raw-first job persistence test**
+- [x] **Step 1: Write failing raw-first job persistence test**
 ```rust
 #[test]
 fn job_is_persisted_before_processing() {
@@ -270,20 +270,20 @@ fn job_is_persisted_before_processing() {
 }
 ```
 
-- [ ] **Step 2: Run test to confirm failure**
+- [x] **Step 2: Run test to confirm failure**
 Run: `cargo test -p knowledge-core ingest_pipeline -v`
 Expected: FAIL until ingest tables/worker exist.
 
-- [ ] **Step 3: Implement worker phases and idempotent retry**
+- [x] **Step 3: Implement worker phases and idempotent retry**
 ```rust
 pub enum IngestPhase { Parse, Normalize, Classify, Persist }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 Run: `cargo test -p knowledge-core ingest_pipeline -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add crates/knowledge-core/src/ingest.rs crates/knowledge-core/src/schema.rs crates/knowledge-cli/src/main.rs crates/knowledge-core/tests/ingest_pipeline.rs
 git commit -m "feat: add raw-first ingestion pipeline with retry safety"

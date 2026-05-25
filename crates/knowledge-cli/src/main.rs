@@ -6,6 +6,7 @@ use knowledge_core::audit::list_entity_history;
 use knowledge_core::capture::{capture_issue, capture_lesson};
 use knowledge_core::config::{resolve as resolve_config, EffectiveConfig};
 use knowledge_core::import::{apply_source_file, apply_source_json};
+use knowledge_core::ingest::{enqueue_job, list_jobs, retry_failed, run_once};
 use knowledge_core::notes::NoteStore;
 use knowledge_core::recall::{recall_with_options, RecallOptions};
 use knowledge_core::schema::{bootstrap, schema_version, verify_schema};
@@ -224,6 +225,41 @@ enum Command {
         )]
         fail_below_exact_match_rate: Option<f64>,
     },
+    #[command(about = "Manage the background ingestion pipeline")]
+    Pipeline {
+        #[command(subcommand)]
+        command: PipelineCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum PipelineCommand {
+    #[command(about = "Enqueue one raw payload for ingestion")]
+    Enqueue {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(help = "Raw payload text to enqueue")]
+        payload: String,
+    },
+    #[command(about = "Process a single queued payload")]
+    RunOnce {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+    },
+    #[command(about = "Retry failed jobs by moving them back to queued")]
+    RetryFailed {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, default_value_t = 20, help = "Maximum failed jobs to retry")]
+        limit: u32,
+    },
+    #[command(about = "Print recent ingestion jobs")]
+    Status {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, default_value_t = 20, help = "Maximum jobs to print")]
+        limit: u32,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -403,6 +439,7 @@ fn run(cli: Cli) -> Result<()> {
             baseline_file.as_ref(),
             fail_below_exact_match_rate,
         ),
+        Command::Pipeline { command } => handle_pipeline(command),
     }
 }
 
@@ -833,6 +870,57 @@ fn handle_eval(
         exact_match_rate
     );
     Ok(())
+}
+
+fn handle_pipeline(command: PipelineCommand) -> Result<()> {
+    match command {
+        PipelineCommand::Enqueue { db, payload } => {
+            let db_path = resolve_db_path(db)?;
+            let conn = open_bootstrapped_db(&db_path)?;
+            verify_schema(&conn)?;
+            let job_id = enqueue_job(&conn, &payload)?;
+            println!("enqueued job {job_id}");
+            Ok(())
+        }
+        PipelineCommand::RunOnce { db } => {
+            let db_path = resolve_db_path(db)?;
+            let conn = open_bootstrapped_db(&db_path)?;
+            verify_schema(&conn)?;
+            if let Some(result) = run_once(&conn)? {
+                println!(
+                    "job {}\t{} -> {}",
+                    result.job_id, result.initial_state, result.final_state
+                );
+            } else {
+                println!("no queued jobs");
+            }
+            Ok(())
+        }
+        PipelineCommand::RetryFailed { db, limit } => {
+            let db_path = resolve_db_path(db)?;
+            let conn = open_bootstrapped_db(&db_path)?;
+            verify_schema(&conn)?;
+            let retried = retry_failed(&conn, limit)?;
+            println!("retried {retried} failed jobs");
+            Ok(())
+        }
+        PipelineCommand::Status { db, limit } => {
+            let db_path = resolve_db_path(db)?;
+            let conn = open_bootstrapped_db(&db_path)?;
+            verify_schema(&conn)?;
+            let rows = list_jobs(&conn, limit)?;
+            for row in rows {
+                println!(
+                    "{}\tstatus={}\tattempts={}\terror={}",
+                    row.id,
+                    row.status,
+                    row.attempts,
+                    row.last_error.unwrap_or_default()
+                );
+            }
+            Ok(())
+        }
+    }
 }
 
 impl From<CompletionShell> for clap_complete::Shell {
