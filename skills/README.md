@@ -7,3 +7,4 @@ Skills should remain domain-agnostic at the core and accept project- or knowledg
 Core knowledge-cli skills:
 - `skills/core/knowledge-update/SKILL.md`
 - `skills/core/knowledge-get/SKILL.md`
+- `skills/core/knowledge-refresh/SKILL.md`

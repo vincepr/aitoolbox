@@ -1,7 +1,7 @@
 {
   "name": "aitoolbox-knowledge-skills",
   "version": "0.1.0",
-  "description": "Compact knowledge-cli workflow skills: knowledge-update and knowledge-get.",
+  "description": "Compact knowledge-cli workflow skills: knowledge-update, knowledge-get, and knowledge-refresh.",
   "author": {
     "name": "vincepr"
   },
@@ -17,8 +17,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "AIToolbox Knowledge Skills",
-    "shortDescription": "Two concise skills for knowledge-cli update and query workflows",
-    "longDescription": "Provides knowledge-update and knowledge-get skills with embedded lesson/issue actions for low-token, exact-first knowledge operations.",
+    "shortDescription": "Three concise skills for knowledge-cli update, query, and governance workflows",
+    "longDescription": "Provides knowledge-update, knowledge-get, and knowledge-refresh skills with embedded lesson/issue actions and periodic governance checks for low-token, exact-first knowledge operations.",
     "developerName": "vincepr",
     "category": "Coding",
     "capabilities": [
@@ -28,7 +28,8 @@
     ],
     "defaultPrompt": [
       "Run knowledge-update for this repository.",
-      "Use knowledge-get to resolve this entity and apply relevant lessons."
+      "Use knowledge-get to resolve this entity and apply relevant lessons.",
+      "Run knowledge-refresh to audit migration, contract, and docs-code parity."
     ],
     "websiteURL": "https://github.com/vincepr/aitoolbox",
     "brandColor": "#0EA5E9",

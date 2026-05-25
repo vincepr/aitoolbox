@@ -1,19 +1,21 @@
 # Knowledge System Skills
 
 ## Status
-- `Implemented (v1)`
+- `Implemented (v2)`
 - Current canonical skills:
   - `knowledge-update`
   - `knowledge-get`
+  - `knowledge-refresh`
 - Design source: `docs/superpowers/specs/2026-05-24-knowledge-cli-skills-design.md`
 
 ## Summary
 This feature defines the behavior layer on top of `knowledge-cli` so agents query and refresh knowledge with minimal context and deterministic outputs.
 
 ## Implemented Scope
-- Two-skill model (`knowledge-update`, `knowledge-get`)
-- Embedded lesson/issue actions in both skills (no standalone apply skill)
-- Exact-first retrieval posture
+- Three-skill model (`knowledge-update`, `knowledge-get`, `knowledge-refresh`)
+- Embedded lesson/issue actions in query/update flows
+- Explicit periodic governance checks via `knowledge-refresh`
+- Exact-first retrieval posture with bounded fallback
 - Concise, structured output contracts
 
 ## Skill Contracts
@@ -23,9 +25,9 @@ Purpose:
 - initialize/refresh mappings and notes with conservative, safe updates
 
 Includes:
-- version check + upgrade guidance
 - major-version migration gate via `scripts/migrate-knowledge-db.sh`
-- bootstrap/update via `knowledge-cli quickstart` and `knowledge-cli init`
+- config authority and startup validity checks via `knowledge-cli quickstart`
+- bootstrap/update via `knowledge-cli init`
 - concise issue/lesson capture when uncertain data is detected
 
 ### `knowledge-get`
@@ -34,8 +36,18 @@ Purpose:
 
 Includes:
 - exact-first lookup via `knowledge-cli get`
-- compact answer + confidence + next action
+- compact answer + confidence + provenance + next action
 - short lessons/issues impact note when relevant
+
+### `knowledge-refresh`
+Purpose:
+- run periodic governance and drift checks without routine data mutation
+
+Includes:
+- migration posture validation
+- contract test verification
+- docs-to-code audit checks
+- skill/docs sync checks with prioritized remediation actions
 
 ## Notes
 - Older naming (`knowledge-query`, `knowledge-init-update`, `knowledge-capture`) is superseded.
