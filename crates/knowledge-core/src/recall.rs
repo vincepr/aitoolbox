@@ -1,5 +1,6 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
+use std::collections::HashMap;
 
 /// Score components for deterministic hybrid ranking.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8,6 +9,7 @@ pub struct ScoreParts {
     pub alias: i64,
     pub fts: i64,
     pub graph: i64,
+    pub recency: i64,
     pub name_penalty: i64,
 }
 
@@ -19,6 +21,25 @@ pub struct RecallResult {
     pub score_parts: ScoreParts,
 }
 
+/// Runtime knobs for hybrid recall.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecallOptions {
+    pub top_k: u32,
+    pub recency_weight: i64,
+    pub namespace_diversity_cap: Option<usize>,
+}
+
+impl RecallOptions {
+    /// Creates default deterministic options.
+    pub fn defaults(top_k: u32) -> Self {
+        Self {
+            top_k,
+            recency_weight: 0,
+            namespace_diversity_cap: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Candidate {
     canonical_name: String,
@@ -27,15 +48,21 @@ struct Candidate {
     repo_name: Option<String>,
     aliases: Vec<String>,
     graph_degree: i64,
+    updated_at: String,
 }
 
-/// Deterministic hybrid recall.
+/// Deterministic hybrid recall with default options.
+pub fn recall(conn: &Connection, query: &str, top_k: u32) -> Result<Vec<RecallResult>> {
+    recall_with_options(conn, query, &RecallOptions::defaults(top_k))
+}
+
+/// Deterministic hybrid recall with explicit options.
 ///
 /// # Arguments
 ///
 /// * `conn` - Open SQLite connection.
 /// * `query` - User recall query.
-/// * `top_k` - Maximum results.
+/// * `options` - Ranking and filtering options.
 ///
 /// # Returns
 ///
@@ -44,28 +71,41 @@ struct Candidate {
 /// # Errors
 ///
 /// Returns an error when SQL operations fail.
-pub fn recall(conn: &Connection, query: &str, top_k: u32) -> Result<Vec<RecallResult>> {
+pub fn recall_with_options(
+    conn: &Connection,
+    query: &str,
+    options: &RecallOptions,
+) -> Result<Vec<RecallResult>> {
     let normalized = query.trim().to_lowercase();
-    if normalized.is_empty() || top_k == 0 {
+    if normalized.is_empty() || options.top_k == 0 {
         return Ok(Vec::new());
     }
 
     let candidates = load_candidates(conn, &normalized)?;
-    let mut ranked: Vec<RecallResult> = candidates
+    let recency_by_name = build_recency_scores(&candidates, options.recency_weight);
+
+    let mut ranked: Vec<(RecallResult, Option<String>)> = candidates
         .into_iter()
-        .map(|candidate| score_candidate(&candidate, &normalized))
-        .filter(|result| result.total_score > 0)
+        .map(|candidate| {
+            let recency = *recency_by_name.get(&candidate.canonical_name).unwrap_or(&0);
+            (
+                score_candidate(&candidate, &normalized, recency),
+                candidate.namespace,
+            )
+        })
+        .filter(|(result, _)| result.total_score > 0)
         .collect();
 
-    ranked.sort_by(|a, b| {
+    ranked.sort_by(|(a, _), (b, _)| {
         b.total_score
             .cmp(&a.total_score)
             .then_with(|| a.canonical_name.cmp(&b.canonical_name))
     });
-    ranked.truncate(top_k as usize);
 
-    persist_telemetry(conn, query, &ranked)?;
-    Ok(ranked)
+    let selected =
+        apply_namespace_diversity(ranked, options.namespace_diversity_cap, options.top_k);
+    persist_telemetry(conn, query, &selected)?;
+    Ok(selected)
 }
 
 fn load_candidates(conn: &Connection, normalized_query: &str) -> Result<Vec<Candidate>> {
@@ -82,7 +122,8 @@ fn load_candidates(conn: &Connection, normalized_query: &str) -> Result<Vec<Cand
                 SELECT COUNT(*)
                 FROM relationships r
                 WHERE r.from_entity_id = e.id OR r.to_entity_id = e.id
-            ) AS degree
+            ) AS degree,
+            e.updated_at
         FROM entities e
         LEFT JOIN aliases a ON a.entity_id = e.id
         WHERE
@@ -105,6 +146,7 @@ fn load_candidates(conn: &Connection, normalized_query: &str) -> Result<Vec<Cand
             repo_name: row.get(4)?,
             aliases: load_aliases(conn, id)?,
             graph_degree: row.get(5)?,
+            updated_at: row.get(6)?,
         });
     }
     Ok(out)
@@ -118,7 +160,28 @@ fn load_aliases(conn: &Connection, entity_id: i64) -> Result<Vec<String>> {
     Ok(aliases)
 }
 
-fn score_candidate(candidate: &Candidate, normalized_query: &str) -> RecallResult {
+fn build_recency_scores(candidates: &[Candidate], recency_weight: i64) -> HashMap<String, i64> {
+    if recency_weight <= 0 {
+        return HashMap::new();
+    }
+
+    let mut ordered: Vec<&Candidate> = candidates.iter().collect();
+    ordered.sort_by(|a, b| {
+        b.updated_at
+            .cmp(&a.updated_at)
+            .then_with(|| a.canonical_name.cmp(&b.canonical_name))
+    });
+
+    let mut map: HashMap<String, i64> = HashMap::with_capacity(ordered.len());
+    let max = ordered.len() as i64;
+    for (idx, candidate) in ordered.into_iter().enumerate() {
+        let rank_bonus = (max - (idx as i64)).max(1);
+        map.insert(candidate.canonical_name.clone(), rank_bonus * recency_weight);
+    }
+    map
+}
+
+fn score_candidate(candidate: &Candidate, normalized_query: &str, recency: i64) -> RecallResult {
     let canonical = candidate.canonical_name.to_lowercase();
     let exact = i64::from(canonical == normalized_query);
 
@@ -156,6 +219,7 @@ fn score_candidate(candidate: &Candidate, normalized_query: &str) -> RecallResul
         alias,
         fts,
         graph,
+        recency,
         name_penalty,
     };
 
@@ -164,6 +228,39 @@ fn score_candidate(candidate: &Candidate, normalized_query: &str) -> RecallResul
         total_score: total_score(&parts),
         score_parts: parts,
     }
+}
+
+fn apply_namespace_diversity(
+    ranked: Vec<(RecallResult, Option<String>)>,
+    cap: Option<usize>,
+    top_k: u32,
+) -> Vec<RecallResult> {
+    if cap.is_none() {
+        return ranked
+            .into_iter()
+            .map(|(result, _)| result)
+            .take(top_k as usize)
+            .collect();
+    }
+
+    let max_per_ns = cap.unwrap_or(usize::MAX);
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let mut out = Vec::with_capacity(top_k as usize);
+
+    for (result, namespace) in ranked {
+        let key = namespace.unwrap_or_else(|| "__none__".to_string());
+        let count = counts.entry(key).or_insert(0);
+        if *count >= max_per_ns {
+            continue;
+        }
+        *count += 1;
+        out.push(result);
+        if out.len() >= top_k as usize {
+            break;
+        }
+    }
+
+    out
 }
 
 fn field_contains(value: &str, normalized_query: &str) -> i64 {
@@ -175,7 +272,7 @@ fn field_contains(value: &str, normalized_query: &str) -> i64 {
 }
 
 fn total_score(s: &ScoreParts) -> i64 {
-    s.exact * 1000 + s.alias * 500 + s.fts * 100 + s.graph * 10 - s.name_penalty
+    s.exact * 1000 + s.alias * 500 + s.fts * 100 + s.graph * 10 + s.recency - s.name_penalty
 }
 
 fn persist_telemetry(conn: &Connection, query: &str, ranked: &[RecallResult]) -> Result<()> {
@@ -190,9 +287,10 @@ fn persist_telemetry(conn: &Connection, query: &str, ranked: &[RecallResult]) ->
                 alias_score,
                 fts_score,
                 graph_score,
+                recency_score,
                 selected_entity
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             ",
             params![
                 query,
@@ -202,6 +300,7 @@ fn persist_telemetry(conn: &Connection, query: &str, ranked: &[RecallResult]) ->
                 result.score_parts.alias,
                 result.score_parts.fts,
                 result.score_parts.graph,
+                result.score_parts.recency,
                 result.canonical_name,
             ],
         )?;

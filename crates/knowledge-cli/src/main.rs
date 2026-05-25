@@ -7,7 +7,7 @@ use knowledge_core::capture::{capture_issue, capture_lesson};
 use knowledge_core::config::{resolve as resolve_config, EffectiveConfig};
 use knowledge_core::import::{apply_source_file, apply_source_json};
 use knowledge_core::notes::NoteStore;
-use knowledge_core::recall::recall;
+use knowledge_core::recall::{recall_with_options, RecallOptions};
 use knowledge_core::schema::{bootstrap, schema_version, verify_schema};
 use knowledge_core::store::KnowledgeStore;
 use rusqlite::Connection;
@@ -195,6 +195,17 @@ enum Command {
         query: String,
         #[arg(long, default_value_t = 5, help = "Maximum number of ranked hits")]
         top_k: u32,
+        #[arg(
+            long,
+            default_value_t = 0,
+            help = "Recency weight for updated entities (0 keeps existing behavior)"
+        )]
+        recency_weight: i64,
+        #[arg(
+            long,
+            help = "Optional cap for results per namespace to reduce near-duplicates"
+        )]
+        namespace_diversity_cap: Option<usize>,
     },
     #[command(about = "Run retrieval evaluation dataset and emit metrics")]
     Eval {
@@ -202,6 +213,16 @@ enum Command {
         db: Option<Utf8PathBuf>,
         #[arg(long, help = "Path to JSON dataset with query/expected_entity rows")]
         dataset: Utf8PathBuf,
+        #[arg(
+            long,
+            help = "Optional JSON baseline file with {\"exact_match_rate\": <f64>}"
+        )]
+        baseline_file: Option<Utf8PathBuf>,
+        #[arg(
+            long,
+            help = "Fail if exact match rate is below this threshold (0.0..1.0)"
+        )]
+        fail_below_exact_match_rate: Option<f64>,
     },
 }
 
@@ -239,6 +260,19 @@ struct CapturePayload {
 struct EvalRow {
     query: String,
     expected_entity: String,
+}
+
+#[derive(Deserialize)]
+struct EvalDataset {
+    dataset_id: String,
+    version: String,
+    generated_at: String,
+    cases: Vec<EvalRow>,
+}
+
+#[derive(Deserialize)]
+struct EvalBaseline {
+    exact_match_rate: f64,
 }
 
 fn load_json_input(
@@ -345,8 +379,30 @@ fn run(cli: Cli) -> Result<()> {
         Command::History { db, entity, limit } => {
             handle_history(resolve_db_path(db)?, &entity, limit)
         }
-        Command::Recall { db, query, top_k } => handle_recall(resolve_db_path(db)?, &query, top_k),
-        Command::Eval { db, dataset } => handle_eval(resolve_db_path(db)?, &dataset),
+        Command::Recall {
+            db,
+            query,
+            top_k,
+            recency_weight,
+            namespace_diversity_cap,
+        } => handle_recall(
+            resolve_db_path(db)?,
+            &query,
+            top_k,
+            recency_weight,
+            namespace_diversity_cap,
+        ),
+        Command::Eval {
+            db,
+            dataset,
+            baseline_file,
+            fail_below_exact_match_rate,
+        } => handle_eval(
+            resolve_db_path(db)?,
+            &dataset,
+            baseline_file.as_ref(),
+            fail_below_exact_match_rate,
+        ),
     }
 }
 
@@ -668,29 +724,56 @@ fn handle_history(db: Utf8PathBuf, entity: &str, limit: u32) -> Result<()> {
     Ok(())
 }
 
-fn handle_recall(db: Utf8PathBuf, query: &str, top_k: u32) -> Result<()> {
+fn handle_recall(
+    db: Utf8PathBuf,
+    query: &str,
+    top_k: u32,
+    recency_weight: i64,
+    namespace_diversity_cap: Option<usize>,
+) -> Result<()> {
     let conn = open_bootstrapped_db(&db)?;
     verify_schema(&conn)?;
-    let hits = recall(&conn, query, top_k)?;
+    let hits = recall_with_options(
+        &conn,
+        query,
+        &RecallOptions {
+            top_k,
+            recency_weight,
+            namespace_diversity_cap,
+        },
+    )?;
     for hit in hits {
         println!(
-            "{}\ttotal={}\texact={}\talias={}\tfts={}\tgraph={}",
+            "{}\ttotal={}\texact={}\talias={}\tfts={}\tgraph={}\trecency={}",
             hit.canonical_name,
             hit.total_score,
             hit.score_parts.exact,
             hit.score_parts.alias,
             hit.score_parts.fts,
             hit.score_parts.graph,
+            hit.score_parts.recency,
         );
     }
     Ok(())
 }
 
-fn handle_eval(db: Utf8PathBuf, dataset: &Utf8PathBuf) -> Result<()> {
+fn handle_eval(
+    db: Utf8PathBuf,
+    dataset: &Utf8PathBuf,
+    baseline_file: Option<&Utf8PathBuf>,
+    fail_below_exact_match_rate: Option<f64>,
+) -> Result<()> {
     let raw = fs::read_to_string(dataset.as_std_path())
         .with_context(|| format!("failed to read eval dataset: {dataset}"))?;
-    let rows: Vec<EvalRow> = serde_json::from_str(&raw)
+    let payload: EvalDataset = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse eval dataset JSON: {dataset}"))?;
+    if payload.dataset_id.trim().is_empty()
+        || payload.version.trim().is_empty()
+        || payload.generated_at.trim().is_empty()
+    {
+        anyhow::bail!("invalid eval dataset: dataset_id, version, and generated_at are required");
+    }
+    let rows = payload.cases;
 
     let conn = open_bootstrapped_db(&db)?;
     verify_schema(&conn)?;
@@ -698,7 +781,7 @@ fn handle_eval(db: Utf8PathBuf, dataset: &Utf8PathBuf) -> Result<()> {
     let mut exact_matches = 0_u32;
     let mut total = 0_u32;
     for row in &rows {
-        let top = recall(&conn, &row.query, 1)?;
+        let top = recall_with_options(&conn, &row.query, &RecallOptions::defaults(1))?;
         let matched = top
             .first()
             .map(|hit| hit.canonical_name == row.expected_entity)
@@ -713,9 +796,41 @@ fn handle_eval(db: Utf8PathBuf, dataset: &Utf8PathBuf) -> Result<()> {
         (exact_matches as f64) / (total as f64)
     };
 
+    if let Some(path) = baseline_file {
+        let baseline_raw = fs::read_to_string(path.as_std_path())
+            .with_context(|| format!("failed to read baseline file: {path}"))?;
+        let baseline: EvalBaseline = serde_json::from_str(&baseline_raw)
+            .with_context(|| format!("failed to parse baseline JSON: {path}"))?;
+        if exact_match_rate + f64::EPSILON < baseline.exact_match_rate {
+            anyhow::bail!(
+                "exact_match_rate regression: current {:.4} < baseline {:.4}",
+                exact_match_rate,
+                baseline.exact_match_rate
+            );
+        }
+    }
+
+    if let Some(threshold) = fail_below_exact_match_rate {
+        if !(0.0..=1.0).contains(&threshold) {
+            anyhow::bail!("--fail-below-exact-match-rate must be between 0.0 and 1.0");
+        }
+        if exact_match_rate + f64::EPSILON < threshold {
+            anyhow::bail!(
+                "exact_match_rate {:.4} below threshold {:.4}",
+                exact_match_rate,
+                threshold
+            );
+        }
+    }
+
     println!(
-        "{{\"total\":{},\"exact_matches\":{},\"exact_match_rate\":{:.4}}}",
-        total, exact_matches, exact_match_rate
+        "{{\"dataset_id\":\"{}\",\"version\":\"{}\",\"generated_at\":\"{}\",\"total\":{},\"exact_matches\":{},\"exact_match_rate\":{:.4}}}",
+        payload.dataset_id,
+        payload.version,
+        payload.generated_at,
+        total,
+        exact_matches,
+        exact_match_rate
     );
     Ok(())
 }

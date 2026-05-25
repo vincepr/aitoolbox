@@ -1,0 +1,11 @@
+{
+  "dataset_id": "smoke-v1",
+  "version": "1.0.0",
+  "generated_at": "2026-05-25T00:00:00Z",
+  "cases": [
+    {
+      "query": "custom",
+      "expected_entity": "MyCompanyName.Ebay.Custom.Client"
+    }
+  ]
+}

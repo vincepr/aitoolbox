@@ -118,6 +118,14 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX IF NOT EXISTS idx_retrieval_telemetry_created_at ON retrieval_telemetry(created_at);
     "#,
     },
+    Migration {
+        version: 3,
+        name: "retrieval_telemetry_recency_score",
+        sql: r#"
+        ALTER TABLE retrieval_telemetry
+        ADD COLUMN recency_score INTEGER NOT NULL DEFAULT 0;
+    "#,
+    },
 ];
 
 /// Returns the latest supported schema version.

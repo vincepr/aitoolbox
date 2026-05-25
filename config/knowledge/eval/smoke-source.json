@@ -1,0 +1,9 @@
+{
+  "entities": [
+    {
+      "canonical_name": "MyCompanyName.Ebay.Custom.Client",
+      "kind": "library",
+      "namespace": "MyCompanyName.Ebay.Custom.Client"
+    }
+  ]
+}

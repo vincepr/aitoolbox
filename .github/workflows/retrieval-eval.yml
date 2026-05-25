@@ -1,0 +1,35 @@
+name: Retrieval Eval
+
+on:
+  pull_request:
+    paths:
+      - 'crates/knowledge-core/**'
+      - 'crates/knowledge-cli/**'
+      - 'config/knowledge/eval/**'
+      - '.github/workflows/retrieval-eval.yml'
+
+jobs:
+  eval-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI
+        run: cargo build -p knowledge-cli
+
+      - name: Init eval database
+        run: |
+          mkdir -p .local/eval
+          cargo run -p knowledge-cli -- init \
+            --db .local/eval/knowledge.db \
+            --source-file config/knowledge/eval/smoke-source.json
+
+      - name: Run retrieval eval gate
+        run: |
+          cargo run -p knowledge-cli -- eval \
+            --db .local/eval/knowledge.db \
+            --dataset config/knowledge/eval/smoke-dataset.json \
+            --baseline-file config/knowledge/eval/smoke-baseline.json \
+            --fail-below-exact-match-rate 1.0
