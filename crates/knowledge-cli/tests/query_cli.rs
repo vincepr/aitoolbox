@@ -262,6 +262,64 @@ fn get_command_reports_no_match_as_informational_success() {
 }
 
 #[test]
+fn get_falls_back_to_entity_summary_when_note_ref_is_missing() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("nested").join("knowledge.db");
+    let source = temp.path().join("sources.json");
+    let notes = temp.path().join("notes");
+
+    fs::write(
+        &source,
+        r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
+          "entities": [
+            {
+              "canonical_name": "marketplaces",
+              "kind": "domain",
+              "summary": "Domain-level summary from entities table.",
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": []
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "get",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "marketplaces",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("marketplaces"))
+        .stdout(contains(
+            "Summary (entity): Domain-level summary from entities table.",
+        ));
+}
+
+#[test]
 fn list_supports_grep_hit_and_miss() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");

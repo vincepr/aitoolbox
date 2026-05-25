@@ -10,6 +10,8 @@ This directory contains ordered implementation plans for the issues in `docs/iss
 4. `04-ingestion-under-populates-aliases.md` -> `docs/issues/04-ingestion-under-populates-aliases.md`
 5. `06-required-explicit-null-input-schema.md` -> `docs/issues/06-required-explicit-null-input-schema.md`
 6. `05-skill-doesnt-teach-naming.md` -> `docs/issues/05-skill-doesnt-teach-naming.md`
+7. `07-get-falls-back-to-entity-summary.md` -> `docs/issues/get-falls-back-to-entity-summary.md`
+8. `08-get-returns-children-on-parent-match.md` -> `docs/issues/get-returns-children-on-parent-match.md`
 
 ## Why this order
 
@@ -19,6 +21,8 @@ This directory contains ordered implementation plans for the issues in `docs/iss
 - `04` makes natural queries resolvable by populating namespace/package/alias data.
 - `06` enforces strict input contracts so missing fields are explicit and observable.
 - `05` is sequenced last so skill docs describe shipped behavior (`list`, location output, and canonical/fallback flow) accurately.
+- `07` restores useful parent output by using existing `entities.summary` when no note is linked.
+- `08` adds hierarchical navigation (`Related`) after parent matches so callers can drill down without guessing.
 
 ## Verification baseline (run after each issue)
 
