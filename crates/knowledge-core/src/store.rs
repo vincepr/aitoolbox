@@ -489,6 +489,56 @@ impl<'a> KnowledgeStore<'a> {
         }))
     }
 
+    /// Returns ranked contextual matches for an entity query.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - Free-form entity lookup string.
+    /// * `limit` - Maximum number of ranked matches to return.
+    ///
+    /// # Returns
+    ///
+    /// Up to `limit` ranked matches ordered by relevance, canonical name, then id.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQL candidate retrieval fails.
+    pub fn search_best(&self, query: &str, limit: u32) -> Result<Vec<ListEntityRecord>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let retriever = SqlLikeCandidateRetriever::new(limit.saturating_mul(50).max(50));
+        let candidates = retriever.retrieve_candidates(self.conn, query)?;
+        let normalized_query = normalize_identifier(query);
+        let query_lower = query.to_ascii_lowercase();
+        let mut ranked = candidates
+            .into_iter()
+            .map(|candidate| {
+                (
+                    search_precedence(query, &normalized_query, &query_lower, &candidate),
+                    candidate.canonical_name.clone(),
+                    candidate.id,
+                    ListEntityRecord {
+                        canonical_name: candidate.canonical_name,
+                        kind: candidate.kind,
+                        repo_name: candidate.repo_name.unwrap_or_default(),
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+
+        ranked.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then(left.1.cmp(&right.1))
+                .then(left.2.cmp(&right.2))
+        });
+        ranked.truncate(limit as usize);
+
+        Ok(ranked.into_iter().map(|(_, _, _, record)| record).collect())
+    }
+
     fn load_entity_location(&self, entity_id: i64) -> Result<Option<EntityLocation>> {
         let location = self
             .conn
@@ -677,4 +727,78 @@ fn read_entity_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<EntityRecord>
         canonical_name: row.get(1)?,
         kind: row.get(2)?,
     })
+}
+
+fn search_precedence(
+    query: &str,
+    normalized_query: &str,
+    query_lower: &str,
+    candidate: &EntityCandidate,
+) -> u8 {
+    if let Some(precedence) = match_precedence(query, normalized_query, candidate) {
+        return precedence;
+    }
+
+    let normalized_fields = candidate_normalized_fields(candidate);
+    if normalized_fields
+        .iter()
+        .any(|field| field.ends_with(normalized_query))
+    {
+        return 7;
+    }
+    if normalized_fields
+        .iter()
+        .any(|field| field.contains(normalized_query))
+    {
+        return 8;
+    }
+
+    let lower_fields = candidate_lower_fields(candidate);
+    if lower_fields.iter().any(|field| field.contains(query_lower)) {
+        return 9;
+    }
+
+    10
+}
+
+fn candidate_normalized_fields(candidate: &EntityCandidate) -> Vec<String> {
+    let mut fields = Vec::with_capacity(4 + candidate.aliases.len());
+    fields.push(normalize_identifier(&candidate.canonical_name));
+    if let Some(namespace) = candidate.namespace.as_deref() {
+        fields.push(normalize_identifier(namespace));
+    }
+    if let Some(package_name) = candidate.package_name.as_deref() {
+        fields.push(normalize_identifier(package_name));
+    }
+    if let Some(repo_name) = candidate.repo_name.as_deref() {
+        fields.push(normalize_identifier(repo_name));
+    }
+    fields.extend(
+        candidate
+            .aliases
+            .iter()
+            .map(|alias| normalize_identifier(alias)),
+    );
+    fields
+}
+
+fn candidate_lower_fields(candidate: &EntityCandidate) -> Vec<String> {
+    let mut fields = Vec::with_capacity(4 + candidate.aliases.len());
+    fields.push(candidate.canonical_name.to_ascii_lowercase());
+    if let Some(namespace) = candidate.namespace.as_deref() {
+        fields.push(namespace.to_ascii_lowercase());
+    }
+    if let Some(package_name) = candidate.package_name.as_deref() {
+        fields.push(package_name.to_ascii_lowercase());
+    }
+    if let Some(repo_name) = candidate.repo_name.as_deref() {
+        fields.push(repo_name.to_ascii_lowercase());
+    }
+    fields.extend(
+        candidate
+            .aliases
+            .iter()
+            .map(|alias| alias.to_ascii_lowercase()),
+    );
+    fields
 }

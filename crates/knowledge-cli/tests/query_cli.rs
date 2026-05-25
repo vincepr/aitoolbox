@@ -499,7 +499,7 @@ fn get_command_prints_local_and_git_when_both_locations_exist() {
     let text = String::from_utf8(output).unwrap();
     assert_eq!(
         text,
-        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\nlocal: /workspace/MyCompanyName.Ebay.Custom.Client\ngit:   https://example.com/repo.git\n"
+        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\nlocal: /workspace/MyCompanyName.Ebay.Custom.Client\ngit:   https://example.com/repo.git\n\nTop matches:\nMyCompanyName.Ebay.Custom.Client\tlibrary\t\n"
     );
 }
 
@@ -563,7 +563,7 @@ fn get_command_prints_only_git_when_location_is_partial() {
     let text = String::from_utf8(output).unwrap();
     assert_eq!(
         text,
-        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\ngit:   https://example.com/repo.git\n"
+        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\ngit:   https://example.com/repo.git\n\nTop matches:\nMyCompanyName.Ebay.Custom.Client\tlibrary\t\n"
     );
 }
 
@@ -626,7 +626,7 @@ fn get_command_keeps_two_line_output_when_location_absent() {
     let text = String::from_utf8(output).unwrap();
     assert_eq!(
         text,
-        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\n"
+        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\n\nTop matches:\nMyCompanyName.Ebay.Custom.Client\tlibrary\t\n"
     );
 }
 
@@ -689,6 +689,118 @@ fn get_resolves_separator_normalized_variants() {
             .success()
             .stdout(contains("laika-marketplaces-jobs-pricestock"));
     }
+}
+
+#[test]
+fn get_prints_ranked_matches_by_default_even_when_exact_match_exists() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
+          "entities": [
+            {"canonical_name": "marketplaces", "kind": "domain", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "laika-marketplaces-jobs-pricestock", "kind": "library", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-ops", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-infra", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []}
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "get",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "marketplaces",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let text = String::from_utf8(output).unwrap();
+    let match_lines = text.lines().filter(|line| line.contains('\t')).count();
+    assert!(text.contains("Top matches:"));
+    assert_eq!(match_lines, 3);
+}
+
+#[test]
+fn get_limit_controls_ranked_match_count() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
+          "entities": [
+            {"canonical_name": "marketplaces", "kind": "domain", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-a", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-b", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-c", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-d", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []}
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "get",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "--limit",
+            "5",
+            "marketplaces",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let text = String::from_utf8(output).unwrap();
+    let match_lines = text.lines().filter(|line| line.contains('\t')).count();
+    assert_eq!(match_lines, 5);
 }
 
 #[test]
@@ -820,5 +932,5 @@ fn version_prints_semver() {
         .args(["version"])
         .assert()
         .success()
-        .stdout(contains("0.2.0"));
+        .stdout(contains("0.3.0"));
 }

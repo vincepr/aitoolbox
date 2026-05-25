@@ -265,3 +265,51 @@ fn exact_lookup_requires_all_query_tokens_for_candidate_match() {
     let result = store.lookup_exact("alpha-gamma").unwrap();
     assert!(result.is_none());
 }
+
+#[test]
+fn search_best_matches_namespace_suffix_and_orders_exact_first() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+
+    store
+        .upsert_entity(EntityInput {
+            canonical_name: "laika-prices-priceapi".to_string(),
+            kind: EntityKind::Library,
+            summary: String::new(),
+            namespace: Some("CompanyName.Laika.Prices.PriceApi".to_string()),
+            package_name: Some("CompanyName.Laika.Prices.PriceApi".to_string()),
+            repo_name: Some("PriceApi".to_string()),
+        })
+        .unwrap();
+    store
+        .upsert_entity(EntityInput::new("prices-domain", EntityKind::Domain))
+        .unwrap();
+
+    let matches = store.search_best("Prices.PriceApi", 3).unwrap();
+    assert_eq!(matches[0].canonical_name, "laika-prices-priceapi");
+}
+
+#[test]
+fn search_best_prefers_exact_name_for_context_queries() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+
+    store
+        .upsert_entity(EntityInput::new("marketplaces", EntityKind::Domain))
+        .unwrap();
+    store
+        .upsert_entity(EntityInput::new(
+            "laika-marketplaces-jobs-pricestock",
+            EntityKind::Library,
+        ))
+        .unwrap();
+    store
+        .upsert_entity(EntityInput::new("marketplaces-ops", EntityKind::Project))
+        .unwrap();
+
+    let matches = store.search_best("Marketplaces", 3).unwrap();
+    assert_eq!(matches.len(), 3);
+    assert_eq!(matches[0].canonical_name, "marketplaces");
+}

@@ -93,6 +93,13 @@ enum Command {
         entity: Option<String>,
         #[arg(
             long,
+            default_value_t = 3,
+            value_parser = clap::value_parser!(u32).range(1..=100),
+            help = "Number of ranked matches to print"
+        )]
+        limit: u32,
+        #[arg(
+            long,
             help = "Path to JSON input file: {\"entity\":\"<canonical-name>\"}",
             conflicts_with_all = ["input_json", "entity"]
         )]
@@ -338,12 +345,14 @@ fn run(cli: Cli) -> Result<()> {
             db,
             notes_root,
             entity,
+            limit,
             input_file,
             input_json,
         } => handle_get(
             resolve_db_path(db)?,
             resolve_notes_root(notes_root)?,
             entity,
+            limit,
             input_file,
             input_json,
         ),
@@ -603,6 +612,7 @@ fn handle_get(
     db: Utf8PathBuf,
     notes_root: Utf8PathBuf,
     entity: Option<String>,
+    limit: u32,
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
 ) -> Result<()> {
@@ -611,7 +621,8 @@ fn handle_get(
     let store = KnowledgeStore::new(&conn);
     let notes = NoteStore::new(notes_root);
     let answer = store.query_exact(&entity_name, &notes)?;
-    print_get_result(&entity_name, answer);
+    let matches = store.search_best(&entity_name, limit)?;
+    print_get_result(&entity_name, answer, matches);
 
     Ok(())
 }
@@ -733,7 +744,11 @@ fn parse_capture_payload(
     serde_json::from_str(&raw).with_context(|| format!("failed to parse {context} input JSON"))
 }
 
-fn print_get_result(requested_entity: &str, answer: Option<knowledge_core::store::QueryAnswer>) {
+fn print_get_result(
+    requested_entity: &str,
+    answer: Option<knowledge_core::store::QueryAnswer>,
+    matches: Vec<knowledge_core::store::ListEntityRecord>,
+) {
     match answer {
         Some(answer) => {
             println!("{}", answer.canonical_name);
@@ -754,6 +769,17 @@ fn print_get_result(requested_entity: &str, answer: Option<knowledge_core::store
         }
         None => {
             println!("No exact entity match found for {}", requested_entity);
+        }
+    }
+
+    if !matches.is_empty() {
+        println!();
+        println!("Top matches:");
+        for record in matches {
+            println!(
+                "{}\t{}\t{}",
+                record.canonical_name, record.kind, record.repo_name
+            );
         }
     }
 }
