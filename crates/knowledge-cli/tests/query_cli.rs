@@ -270,12 +270,18 @@ fn list_supports_grep_hit_and_miss() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "MyCompanyName.Ebay.Custom.Client",
               "kind": "library",
+              "summary": null,
               "namespace": "MyCompanyName.Ebay.Custom.Client",
-              "repo_name": "CustomRepo"
+              "package_name": null,
+              "repo_name": "CustomRepo",
+              "aliases": [],
+              "location": null,
+              "notes": []
             }
           ]
         }"#,
@@ -326,10 +332,11 @@ fn list_filters_by_kind_and_applies_limit() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
-            {"canonical_name": "Alpha.Core", "kind": "library", "repo_name": "alpha"},
-            {"canonical_name": "Beta.Core", "kind": "library", "repo_name": "beta"},
-            {"canonical_name": "Ops.Service", "kind": "project", "repo_name": "ops"}
+            {"canonical_name": "Alpha.Core", "kind": "library", "summary": null, "namespace": null, "package_name": null, "repo_name": "alpha", "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "Beta.Core", "kind": "library", "summary": null, "namespace": null, "package_name": null, "repo_name": "beta", "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "Ops.Service", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": "ops", "aliases": [], "location": null, "notes": []}
           ]
         }"#,
     )
@@ -389,8 +396,9 @@ fn list_matches_aliases() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
-            {"canonical_name": "MyCompanyName.Ebay.Custom.Client", "kind": "library"}
+            {"canonical_name": "MyCompanyName.Ebay.Custom.Client", "kind": "library", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []}
           ]
         }"#,
     )
@@ -440,10 +448,18 @@ fn get_command_prints_local_and_git_when_both_locations_exist() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "MyCompanyName.Ebay.Custom.Client",
               "kind": "library",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": [],
               "local_path": "/workspace/MyCompanyName.Ebay.Custom.Client",
               "git_url": "https://example.com/repo.git"
             }
@@ -497,10 +513,18 @@ fn get_command_prints_only_git_when_location_is_partial() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "MyCompanyName.Ebay.Custom.Client",
               "kind": "library",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": [],
               "git_url": "https://example.com/repo.git"
             }
           ]
@@ -553,10 +577,18 @@ fn get_command_keeps_two_line_output_when_location_absent() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "MyCompanyName.Ebay.Custom.Client",
-              "kind": "library"
+              "kind": "library",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": []
             }
           ]
         }"#,
