@@ -1,4 +1,5 @@
 # Reconciled 02: Provenance, Audit, and Idempotency Design
+**DONE:** `2026-05-25-reconciled-02-provenance-audit-design.md`
 
 **Goal:** Record immutable lineage for all writes and prevent duplicate writes under retries.
 

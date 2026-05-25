@@ -1,4 +1,5 @@
 # Reconciled 03: Unified Contract Fixtures for CLI and SDK Design
+**DONE:** `2026-05-25-reconciled-03-unified-contract-fixtures-design.md`
 
 **Goal:** Prevent output/interface drift by introducing one shared fixture/version source.
 

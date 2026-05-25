@@ -1,4 +1,5 @@
 # Reconciled 05: Hybrid Recall with Evaluation Harness Design
+**DONE:** `2026-05-25-reconciled-05-hybrid-recall-eval-design.md`
 
 **Goal:** Add deterministic ranked recall and measurable retrieval quality gates.
 
