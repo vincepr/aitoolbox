@@ -145,6 +145,139 @@ pub struct KnowledgeStore<'a> {
     conn: &'a Connection,
 }
 
+/// Candidate retrieval abstraction for exact query matching.
+pub trait EntityCandidateRetriever {
+    /// Retrieves a bounded set of candidate entities for a query.
+    fn retrieve_candidates(&self, conn: &Connection, query: &str) -> Result<Vec<EntityCandidate>>;
+}
+
+/// Candidate ranking abstraction for exact query matching.
+pub trait EntityMatcher {
+    /// Selects the best match from candidates, if any.
+    fn select_best(&self, query: &str, candidates: &[EntityCandidate]) -> Option<EntityRecord>;
+}
+
+/// Default SQL-backed candidate retriever using case-insensitive token `LIKE` matching.
+#[derive(Debug, Clone)]
+struct SqlLikeCandidateRetriever {
+    limit: u32,
+}
+
+/// Default deterministic rules matcher for exact and normalized equality.
+#[derive(Debug, Clone, Copy)]
+struct NormalizedRuleMatcher;
+
+#[derive(Debug, Clone)]
+pub struct EntityCandidate {
+    pub id: i64,
+    pub canonical_name: String,
+    pub kind: String,
+    pub namespace: Option<String>,
+    pub package_name: Option<String>,
+    pub repo_name: Option<String>,
+    pub aliases: Vec<String>,
+}
+
+impl SqlLikeCandidateRetriever {
+    fn new(limit: u32) -> Self {
+        Self { limit }
+    }
+}
+
+impl EntityCandidateRetriever for SqlLikeCandidateRetriever {
+    fn retrieve_candidates(&self, conn: &Connection, query: &str) -> Result<Vec<EntityCandidate>> {
+        let tokens = tokenize_identifier(query);
+        if tokens.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let token_clauses = tokens
+            .iter()
+            .map(|_| {
+                "(LOWER(e.canonical_name) LIKE ? ESCAPE '\\' OR \
+                  LOWER(COALESCE(e.namespace, '')) LIKE ? ESCAPE '\\' OR \
+                  LOWER(COALESCE(e.package_name, '')) LIKE ? ESCAPE '\\' OR \
+                  LOWER(COALESCE(e.repo_name, '')) LIKE ? ESCAPE '\\' OR \
+                  EXISTS (SELECT 1 FROM aliases a WHERE a.entity_id = e.id AND LOWER(a.alias) LIKE ? ESCAPE '\\'))"
+            })
+            .collect::<Vec<_>>()
+            .join(" AND ");
+        let sql = format!(
+            "SELECT e.id, e.canonical_name, e.kind, e.namespace, e.package_name, e.repo_name
+             FROM entities e
+             WHERE {token_clauses}
+             ORDER BY e.canonical_name, e.id
+             LIMIT ?"
+        );
+
+        let mut like_params = Vec::with_capacity(tokens.len() * 5 + 1);
+        for token in &tokens {
+            let pattern = format!("%{}%", escape_like_token(token));
+            for _ in 0..5 {
+                like_params.push(pattern.clone());
+            }
+        }
+        like_params.push(self.limit.to_string());
+        let dynamic_params = like_params
+            .iter()
+            .map(|value| value as &dyn rusqlite::ToSql)
+            .collect::<Vec<_>>();
+
+        let mut stmt = conn.prepare(&sql)?;
+        let mut candidates = stmt
+            .query_map(dynamic_params.as_slice(), |row| {
+                Ok(EntityCandidate {
+                    id: row.get(0)?,
+                    canonical_name: row.get(1)?,
+                    kind: row.get(2)?,
+                    namespace: row.get(3)?,
+                    package_name: row.get(4)?,
+                    repo_name: row.get(5)?,
+                    aliases: Vec::new(),
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        for candidate in &mut candidates {
+            let mut alias_stmt =
+                conn.prepare("SELECT alias FROM aliases WHERE entity_id = ?1 ORDER BY alias")?;
+            candidate.aliases = alias_stmt
+                .query_map([candidate.id], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+        }
+
+        Ok(candidates)
+    }
+}
+
+impl EntityMatcher for NormalizedRuleMatcher {
+    fn select_best(&self, query: &str, candidates: &[EntityCandidate]) -> Option<EntityRecord> {
+        let normalized_query = normalize_identifier(query);
+        let mut best: Option<(u8, &EntityCandidate)> = None;
+
+        for candidate in candidates {
+            let precedence = match_precedence(query, &normalized_query, candidate)?;
+            if let Some((best_precedence, best_candidate)) = best {
+                if precedence < best_precedence
+                    || (precedence == best_precedence
+                        && ((candidate.canonical_name.as_str(), candidate.id)
+                            < (best_candidate.canonical_name.as_str(), best_candidate.id)))
+                {
+                    best = Some((precedence, candidate));
+                }
+            } else {
+                best = Some((precedence, candidate));
+            }
+        }
+
+        best.map(|(_, candidate)| EntityRecord {
+            id: candidate.id,
+            canonical_name: candidate.canonical_name.clone(),
+            kind: candidate.kind.clone(),
+        })
+    }
+}
+
 impl<'a> KnowledgeStore<'a> {
     /// Creates a store using a shared SQLite connection.
     ///
@@ -273,7 +406,10 @@ impl<'a> KnowledgeStore<'a> {
     ///
     /// Returns an error if SQL queries fail.
     pub fn lookup_exact(&self, query: &str) -> Result<Option<ExactLookup>> {
-        let entity = self.find_primary_entity(query)?;
+        let retriever = SqlLikeCandidateRetriever::new(200);
+        let matcher = NormalizedRuleMatcher;
+        let candidates = retriever.retrieve_candidates(self.conn, query)?;
+        let entity = matcher.select_best(query, &candidates);
 
         let Some(entity) = entity else {
             return Ok(None);
@@ -430,41 +566,6 @@ impl<'a> KnowledgeStore<'a> {
         Ok(records)
     }
 
-    fn find_primary_entity(&self, query: &str) -> Result<Option<EntityRecord>> {
-        let entity = self
-            .conn
-            .query_row(
-                "
-                SELECT id, canonical_name, kind
-                FROM entities e
-                WHERE e.canonical_name = ?1
-                    OR e.namespace = ?1 COLLATE NOCASE
-                    OR e.package_name = ?1 COLLATE NOCASE
-                    OR e.repo_name = ?1 COLLATE NOCASE
-                    OR EXISTS (
-                        SELECT 1
-                        FROM aliases a
-                        WHERE a.entity_id = e.id AND a.alias = LOWER(?1)
-                    )
-                ORDER BY
-                    CASE
-                        WHEN e.canonical_name = ?1 THEN 1
-                        WHEN e.namespace = ?1 COLLATE NOCASE THEN 2
-                        WHEN e.package_name = ?1 COLLATE NOCASE THEN 3
-                        WHEN e.repo_name = ?1 COLLATE NOCASE THEN 4
-                        ELSE 5
-                    END,
-                    e.canonical_name,
-                    e.id
-                LIMIT 1
-                ",
-                [query],
-                read_entity_record,
-            )
-            .optional()?;
-        Ok(entity)
-    }
-
     fn load_related_entities(&self, entity_id: i64) -> Result<Vec<EntityRecord>> {
         let mut stmt = self.conn.prepare(
             "
@@ -497,6 +598,77 @@ impl<'a> KnowledgeStore<'a> {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(related)
     }
+}
+
+fn tokenize_identifier(input: &str) -> Vec<String> {
+    input
+        .split(|ch: char| matches!(ch, '.' | '-' | '_' | '/' | '\\') || ch.is_whitespace())
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_ascii_lowercase())
+        .collect()
+}
+
+fn normalize_identifier(input: &str) -> String {
+    tokenize_identifier(input).join("-")
+}
+
+fn escape_like_token(token: &str) -> String {
+    token
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+fn equals_case_insensitive(value: Option<&str>, query: &str) -> bool {
+    value
+        .map(|entry| entry.eq_ignore_ascii_case(query))
+        .unwrap_or(false)
+}
+
+fn normalized_equals(value: Option<&str>, normalized_query: &str) -> bool {
+    value
+        .map(|entry| normalize_identifier(entry) == normalized_query)
+        .unwrap_or(false)
+}
+
+fn match_precedence(
+    query: &str,
+    normalized_query: &str,
+    candidate: &EntityCandidate,
+) -> Option<u8> {
+    if candidate.canonical_name == query {
+        return Some(1);
+    }
+    if equals_case_insensitive(candidate.namespace.as_deref(), query)
+        || equals_case_insensitive(candidate.package_name.as_deref(), query)
+        || equals_case_insensitive(candidate.repo_name.as_deref(), query)
+    {
+        return Some(2);
+    }
+    if candidate
+        .aliases
+        .iter()
+        .any(|alias| alias.eq_ignore_ascii_case(query))
+    {
+        return Some(3);
+    }
+    if normalize_identifier(&candidate.canonical_name) == normalized_query {
+        return Some(4);
+    }
+    if normalized_equals(candidate.namespace.as_deref(), normalized_query)
+        || normalized_equals(candidate.package_name.as_deref(), normalized_query)
+        || normalized_equals(candidate.repo_name.as_deref(), normalized_query)
+    {
+        return Some(5);
+    }
+    if candidate
+        .aliases
+        .iter()
+        .any(|alias| normalize_identifier(alias) == normalized_query)
+    {
+        return Some(6);
+    }
+    None
 }
 
 fn read_entity_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<EntityRecord> {

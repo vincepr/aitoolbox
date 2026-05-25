@@ -631,6 +631,67 @@ fn get_command_keeps_two_line_output_when_location_absent() {
 }
 
 #[test]
+fn get_resolves_separator_normalized_variants() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
+          "entities": [
+            {
+              "canonical_name": "laika-marketplaces-jobs-pricestock",
+              "kind": "library",
+              "summary": null,
+              "namespace": "Relaxdays.Laika.Marketplaces.Jobs.PriceStock",
+              "package_name": "Relaxdays.Laika.Marketplaces.Jobs.PriceStock",
+              "repo_name": "PriceStock",
+              "aliases": ["Laika.Marketplaces.Jobs.PriceStock", "laika/Marketplaces/Jobs/PriceStock"],
+              "location": null,
+              "notes": []
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    for query in [
+        "Laika.Marketplaces.Jobs.PriceStock",
+        "laika-marketplaces-jobs-pricestock",
+        "laika/Marketplaces/Jobs/PriceStock",
+    ] {
+        Command::cargo_bin("knowledge-cli")
+            .unwrap()
+            .args([
+                "get",
+                "--db",
+                db.to_str().unwrap(),
+                "--notes-root",
+                notes.to_str().unwrap(),
+                query,
+            ])
+            .assert()
+            .success()
+            .stdout(contains("laika-marketplaces-jobs-pricestock"));
+    }
+}
+
+#[test]
 fn init_source_json_parse_errors_include_flag_context() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");
