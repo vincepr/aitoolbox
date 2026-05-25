@@ -17,18 +17,22 @@ Use this skill to answer repo/domain/system/entity questions with compact, confi
    - boundary/context recall
    - lesson/issue recall
 2. Run direct lookup first:
-   - `knowledge-cli get <entity> [--db ... --notes-root ... --limit <N>]`
+   - `knowledge-cli get <entity> [--db ... --notes-root ... --limit <N> --related-limit <N>]`
    - `get` supports direct normalized variants (`.`, `-`, `_`, `/`, case-insensitive).
 3. Use ranked matches from `get` output:
    - `get` always prints `Top matches:` (default 3 ordered rows).
    - increase candidates with `--limit <N>` when broader context is needed.
    - use `list --grep` only when `get` returns no plausible candidates.
-4. Build compact answer from minimal relevant context.
-5. Apply lessons/issues inline:
+4. For parent hits (`domain`/`system`), use `Related` first:
+   - `get` prints `Related` rows (`id`, `canonical_name`, `kind`, note marker).
+   - increase with `--related-limit <N>` when parent has many children.
+   - use a related child canonical name for the next `get` call.
+5. Build compact answer from minimal relevant context.
+6. Apply lessons/issues inline:
    - if corrective lesson applies, include one concise line
    - if unresolved/high-impact gap remains, create issue
-6. If `get` returns `local:` or `git:`, inspect source before speculation.
-7. If behavior-level uncertainty remains, recommend source inspection explicitly.
+7. If `get` returns `local:` or `git:`, inspect source before speculation.
+8. If behavior-level uncertainty remains, recommend source inspection explicitly.
 
 ## Output (strict)
 - `match`: canonical entity/repo or `none`

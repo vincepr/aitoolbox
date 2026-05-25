@@ -21,21 +21,15 @@ This repository is organized to support multiple kinds of tooling without forcin
   Human-authored configuration templates, schemas, and defaults.
 - `skills/`
   Reusable skills, prompts, workflow definitions, and helper metadata.
-- `knowledge/`
-  Knowledge source descriptors, templates, and conventions for connecting domain knowledge without embedding it into the core.
-- `projects/`
-  Project descriptors, examples, and templates for local machine usage.
 - `scripts/`
   Shell or PowerShell helpers where a compiled tool would be excessive.
 - `docs/`
   Architecture notes, future ideas, and formal decisions.
-- `examples/`
-  Example setups showing how pieces fit together.
 
 ## Directory Materialization
 
 - Empty placeholder directories are not kept in git just to reserve names.
-- Areas like `apps/`, `packages/`, `projects/examples/`, `projects/templates/`, `skills/templates/`, `knowledge/notes/`, and `knowledge/sources/` are created when first used.
+- Areas like `apps/`, `packages/`, and `skills/templates/` are created when first used.
 - `.gitkeep` files are only used when an otherwise-empty tracked directory is currently required.
 
 ## Expected Boundary Style

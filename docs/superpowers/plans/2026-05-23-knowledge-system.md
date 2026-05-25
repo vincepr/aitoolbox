@@ -7,7 +7,7 @@
 
 **Goal:** Build the first useful local knowledge system for `aitoolbox`: a Rust CLI plus library that stores structured entity metadata in SQLite, keeps compact notes on disk, supports exact lookup first, and captures lessons and issues without external services.
 
-**Architecture:** Create a small Rust workspace with one reusable library crate for the knowledge model, schema, storage, retrieval, and import logic, plus one CLI crate that exposes `knowledge init`, `knowledge query`, and `knowledge capture` commands. Store noisy retrieval metadata in SQLite and keep agent-facing notes as short Markdown files under `knowledge/notes/`, referenced by database rows so exact lookup and graph expansion stay cheap.
+**Architecture:** Create a small Rust workspace with one reusable library crate for the knowledge model, schema, storage, retrieval, and import logic, plus one CLI crate that exposes `knowledge init`, `knowledge query`, and `knowledge capture` commands. Store noisy retrieval metadata in SQLite and keep agent-facing notes as short Markdown files under `.local/knowledge/notes/`, referenced by database rows so exact lookup and graph expansion stay cheap.
 
 **Tech Stack:** Rust, `clap`, `rusqlite`, `serde`, `serde_json`, `anyhow`, `thiserror`, `tracing`, `tracing-subscriber`, `camino`, `walkdir`, `assert_cmd`, `tempfile`
 
@@ -41,19 +41,19 @@
   `clap` command definitions and output formatting.
 - `config/knowledge/sources.example.json`
   Example source config for repo roots and curated entities.
-- `knowledge/notes/.gitkeep`
+- `.local/knowledge/notes/.gitkeep`
   Keeps the note directory in git before real notes exist.
-- `knowledge/templates/domain.md`
+- `config/knowledge/templates/domain.md`
   Short authoring template for domain notes.
-- `knowledge/templates/system.md`
+- `config/knowledge/templates/system.md`
   Short authoring template for system notes.
-- `knowledge/templates/project.md`
+- `config/knowledge/templates/project.md`
   Short authoring template for project notes.
-- `knowledge/templates/library.md`
+- `config/knowledge/templates/library.md`
   Short authoring template for library notes.
-- `knowledge/templates/lesson.md`
+- `config/knowledge/templates/lesson.md`
   Short authoring template for lesson notes.
-- `knowledge/templates/issue.md`
+- `config/knowledge/templates/issue.md`
   Short authoring template for issue notes.
 - `docs/features/knowledge-system/implementation-plan.md`
   Replace the current phase-only outline with a short pointer to this executable plan.
@@ -629,11 +629,11 @@ git commit -m "feat: implement exact knowledge lookup"
 - Create: `crates/knowledge-core/src/notes.rs`
 - Modify: `crates/knowledge-core/src/store.rs`
 - Create: `crates/knowledge-core/tests/query_output.rs`
-- Create: `knowledge/notes/.gitkeep`
-- Create: `knowledge/templates/domain.md`
-- Create: `knowledge/templates/system.md`
-- Create: `knowledge/templates/project.md`
-- Create: `knowledge/templates/library.md`
+- Create: `.local/knowledge/notes/.gitkeep`
+- Create: `config/knowledge/templates/domain.md`
+- Create: `config/knowledge/templates/system.md`
+- Create: `config/knowledge/templates/project.md`
+- Create: `config/knowledge/templates/library.md`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -779,7 +779,7 @@ impl<'a> KnowledgeStore<'a> {
 }
 ```
 
-`knowledge/templates/library.md`
+`config/knowledge/templates/library.md`
 
 ```md
 # Library Name
@@ -790,7 +790,7 @@ One sentence describing what the library is for.
 - Check: the client entrypoint or dependency registration first
 ```
 
-`knowledge/templates/domain.md`
+`config/knowledge/templates/domain.md`
 
 ```md
 # Domain Name
@@ -801,7 +801,7 @@ One sentence describing the business boundary.
 - Important systems:
 ```
 
-`knowledge/templates/system.md`
+`config/knowledge/templates/system.md`
 
 ```md
 # System Name
@@ -812,7 +812,7 @@ One sentence describing what this system owns.
 - Start in:
 ```
 
-`knowledge/templates/project.md`
+`config/knowledge/templates/project.md`
 
 ```md
 # Project Name
@@ -831,7 +831,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/knowledge-core/src/lib.rs crates/knowledge-core/src/notes.rs crates/knowledge-core/src/store.rs crates/knowledge-core/tests/query_output.rs knowledge/notes/.gitkeep knowledge/templates/domain.md knowledge/templates/system.md knowledge/templates/project.md knowledge/templates/library.md
+git add crates/knowledge-core/src/lib.rs crates/knowledge-core/src/notes.rs crates/knowledge-core/src/store.rs crates/knowledge-core/tests/query_output.rs .local/knowledge/notes/.gitkeep config/knowledge/templates/domain.md config/knowledge/templates/system.md config/knowledge/templates/project.md config/knowledge/templates/library.md
 git commit -m "feat: add compact knowledge notes"
 ```
 
@@ -1028,8 +1028,8 @@ git commit -m "feat: add knowledge source import"
 - Create: `crates/knowledge-core/src/capture.rs`
 - Modify: `crates/knowledge-core/src/store.rs`
 - Create: `crates/knowledge-core/tests/capture.rs`
-- Create: `knowledge/templates/lesson.md`
-- Create: `knowledge/templates/issue.md`
+- Create: `config/knowledge/templates/lesson.md`
+- Create: `config/knowledge/templates/issue.md`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1117,7 +1117,7 @@ fn capture(
 }
 ```
 
-`knowledge/templates/lesson.md`
+`config/knowledge/templates/lesson.md`
 
 ```md
 # Lesson Slug
@@ -1129,7 +1129,7 @@ One short corrective rule.
 - Reminder:
 ```
 
-`knowledge/templates/issue.md`
+`config/knowledge/templates/issue.md`
 
 ```md
 # Issue Slug
@@ -1149,7 +1149,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/knowledge-core/src/lib.rs crates/knowledge-core/src/capture.rs crates/knowledge-core/tests/capture.rs knowledge/templates/lesson.md knowledge/templates/issue.md
+git add crates/knowledge-core/src/lib.rs crates/knowledge-core/src/capture.rs crates/knowledge-core/tests/capture.rs config/knowledge/templates/lesson.md config/knowledge/templates/issue.md
 git commit -m "feat: add lesson and issue capture"
 ```
 
@@ -1350,7 +1350,7 @@ fn main() -> Result<()> {
 Use the local knowledge tool to initialize a small SQLite store and query exact identifiers:
 
 - `cargo run -p knowledge-cli -- init --db .local/knowledge.db --source config/knowledge/sources.example.json`
-- `cargo run -p knowledge-cli -- query MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root knowledge/notes`
+- `cargo run -p knowledge-cli -- query MyCompanyName.Ebay.Custom.Client --db .local/knowledge.db --notes-root .local/knowledge/notes`
 ```
 
 `docs/features/knowledge-system/implementation-plan.md`

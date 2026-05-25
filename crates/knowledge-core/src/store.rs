@@ -125,6 +125,28 @@ pub struct ListEntityRecord {
     pub repo_name: String,
 }
 
+/// One related entity row for parent-context navigation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelatedEntityRecord {
+    /// SQLite primary key.
+    pub id: i64,
+    /// Canonical identifier.
+    pub canonical_name: String,
+    /// Stored kind string.
+    pub kind: String,
+    /// True when note content is known for this entity.
+    pub has_note: bool,
+}
+
+/// Bounded related-entity results with total candidate count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelatedEntityPage {
+    /// Total number of related candidates before limit.
+    pub total: u32,
+    /// Returned rows after ordering and limit.
+    pub rows: Vec<RelatedEntityRecord>,
+}
+
 /// Extracts the first non-heading paragraph from markdown.
 ///
 /// # Arguments
@@ -576,6 +598,111 @@ impl<'a> KnowledgeStore<'a> {
         ranked.truncate(limit as usize);
 
         Ok(ranked.into_iter().map(|(_, _, _, record)| record).collect())
+    }
+
+    /// Returns related child-like entities for a matched parent.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent_id` - Matched parent entity id.
+    /// * `parent_canonical_name` - Matched parent canonical name.
+    /// * `limit` - Maximum number of related rows to return.
+    ///
+    /// # Returns
+    ///
+    /// Ordered related rows and total candidate count before limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQL query preparation or execution fails.
+    pub fn related_children(
+        &self,
+        parent_id: i64,
+        parent_canonical_name: &str,
+        limit: u32,
+    ) -> Result<RelatedEntityPage> {
+        if limit == 0 {
+            return Ok(RelatedEntityPage {
+                total: 0,
+                rows: Vec::new(),
+            });
+        }
+
+        let parent = parent_canonical_name.to_ascii_lowercase();
+        let parent_prefix = format!("{parent}-%");
+        let infix_pattern = format!("%-{parent}-%");
+        let suffix_pattern = format!("%-{parent}");
+        let limit_i64 = i64::from(limit);
+
+        let sql = "
+            WITH related_ids AS (
+                SELECT DISTINCT e.id
+                FROM entities e
+                WHERE e.id != ?1
+                  AND (
+                    EXISTS (
+                        SELECT 1
+                        FROM relationships r
+                        WHERE
+                            (r.from_entity_id = ?1 AND r.to_entity_id = e.id)
+                            OR (r.to_entity_id = ?1 AND r.from_entity_id = e.id)
+                    )
+                    OR LOWER(e.canonical_name) LIKE ?2
+                    OR LOWER(e.canonical_name) LIKE ?3
+                    OR LOWER(e.canonical_name) LIKE ?4
+                  )
+            ),
+            ranked AS (
+                SELECT
+                    e.id,
+                    e.canonical_name,
+                    e.kind,
+                    CASE WHEN e.notes_state = 'known' THEN 1 ELSE 0 END AS has_note,
+                    CASE e.kind
+                        WHEN 'lesson' THEN 0
+                        WHEN 'library' THEN 1
+                        WHEN 'system' THEN 2
+                        ELSE 3
+                    END AS kind_rank
+                FROM entities e
+                JOIN related_ids r ON r.id = e.id
+            )
+            SELECT id, canonical_name, kind, has_note, (SELECT COUNT(*) FROM ranked) AS total_count
+            FROM ranked
+            ORDER BY has_note DESC, kind_rank ASC, canonical_name ASC, id ASC
+            LIMIT ?5
+        ";
+        let mut stmt = self.conn.prepare(sql)?;
+        let mut total: u32 = 0;
+        let rows = stmt
+            .query_map(
+                params![
+                    parent_id,
+                    parent_prefix.as_str(),
+                    infix_pattern.as_str(),
+                    suffix_pattern.as_str(),
+                    limit_i64
+                ],
+                |row| {
+                    let row_total = row.get::<_, i64>(4)?;
+                    total = row_total.max(0).min(i64::from(u32::MAX)) as u32;
+                    Ok(RelatedEntityRecord {
+                        id: row.get(0)?,
+                        canonical_name: row.get(1)?,
+                        kind: row.get(2)?,
+                        has_note: row.get::<_, i64>(3)? == 1,
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        if rows.is_empty() {
+            return Ok(RelatedEntityPage {
+                total: 0,
+                rows: Vec::new(),
+            });
+        }
+
+        Ok(RelatedEntityPage { total, rows })
     }
 
     fn load_entity_location(&self, entity_id: i64) -> Result<Option<EntityLocation>> {

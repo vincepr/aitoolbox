@@ -100,6 +100,13 @@ enum Command {
         limit: u32,
         #[arg(
             long,
+            default_value_t = 10,
+            value_parser = clap::value_parser!(u32).range(1..=100),
+            help = "Number of related child entities to print for parent matches"
+        )]
+        related_limit: u32,
+        #[arg(
+            long,
             help = "Path to JSON input file: {\"entity\":\"<canonical-name>\"}",
             conflicts_with_all = ["input_json", "entity"]
         )]
@@ -346,6 +353,7 @@ fn run(cli: Cli) -> Result<()> {
             notes_root,
             entity,
             limit,
+            related_limit,
             input_file,
             input_json,
         } => handle_get(
@@ -353,6 +361,7 @@ fn run(cli: Cli) -> Result<()> {
             resolve_notes_root(notes_root)?,
             entity,
             limit,
+            related_limit,
             input_file,
             input_json,
         ),
@@ -613,6 +622,7 @@ fn handle_get(
     notes_root: Utf8PathBuf,
     entity: Option<String>,
     limit: u32,
+    related_limit: u32,
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
 ) -> Result<()> {
@@ -620,9 +630,23 @@ fn handle_get(
     let conn = open_bootstrapped_db(&db)?;
     let store = KnowledgeStore::new(&conn);
     let notes = NoteStore::new(notes_root);
+    let related = store
+        .lookup_exact(&entity_name)?
+        .and_then(|lookup| {
+            if is_parent_kind(&lookup.entity.kind) {
+                Some(store.related_children(
+                    lookup.entity.id,
+                    &lookup.entity.canonical_name,
+                    related_limit,
+                ))
+            } else {
+                None
+            }
+        })
+        .transpose()?;
     let answer = store.query_exact(&entity_name, &notes)?;
     let matches = store.search_best(&entity_name, limit)?;
-    print_get_result(&entity_name, answer, matches);
+    print_get_result(&entity_name, answer, related, matches);
 
     Ok(())
 }
@@ -747,6 +771,7 @@ fn parse_capture_payload(
 fn print_get_result(
     requested_entity: &str,
     answer: Option<knowledge_core::store::QueryAnswer>,
+    related: Option<knowledge_core::store::RelatedEntityPage>,
     matches: Vec<knowledge_core::store::ListEntityRecord>,
 ) {
     match answer {
@@ -776,6 +801,20 @@ fn print_get_result(
         }
     }
 
+    if let Some(related) = related {
+        if !related.rows.is_empty() {
+            println!();
+            println!("Related ({} of {}):", related.rows.len(), related.total);
+            for row in related.rows {
+                let note_marker = if row.has_note { "has_note" } else { "no_note" };
+                println!(
+                    "{}\t{}\t{}\t{}",
+                    row.id, row.canonical_name, row.kind, note_marker
+                );
+            }
+        }
+    }
+
     if !matches.is_empty() {
         println!();
         println!("Top matches:");
@@ -786,6 +825,10 @@ fn print_get_result(
             );
         }
     }
+}
+
+fn is_parent_kind(kind: &str) -> bool {
+    matches!(kind, "domain" | "system")
 }
 
 fn handle_completions(shell: CompletionShell) {
