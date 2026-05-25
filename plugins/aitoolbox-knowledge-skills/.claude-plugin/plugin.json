@@ -1,6 +1,6 @@
 {
   "name": "aitoolbox-knowledge-skills",
-  "description": "Compact knowledge-cli workflow skills: knowledge-update and knowledge-get.",
+  "description": "Compact knowledge-cli workflow skills: knowledge-update, knowledge-get, and knowledge-refresh.",
   "version": "0.1.0",
   "author": {
     "name": "vincepr"

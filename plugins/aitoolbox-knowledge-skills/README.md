@@ -1,8 +1,9 @@
 # AIToolbox Knowledge Skills Plugin
 
-This package bundles two skills:
+This package bundles three skills:
 - `knowledge-update`
 - `knowledge-get`
+- `knowledge-refresh`
 
 ## Install in Codex
 

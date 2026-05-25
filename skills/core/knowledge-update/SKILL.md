@@ -1,43 +1,53 @@
 ---
 name: knowledge-update
-description: "Upsert local knowledge-cli state from repo structure/config and apply concise lesson/issue actions during refresh."
+description: "Refresh local knowledge-cli state with explicit migration/config authority checks, conservative updates, and deterministic compact output."
 ---
 
 # knowledge-update
 
-Use this skill to initialize or refresh the local knowledge store with minimal output and safe corrective actions.
+Use this skill to initialize or refresh local knowledge mappings safely and deterministically.
 
 ## Inputs
 - Optional `--db`, `--notes-root`, `--source-file` overrides.
-- Optional human anchors only when missing and undiscoverable: top-level `domain`/`system` context or pointer to source JSON.
+- Optional human anchors only if required and undiscoverable.
+
+## Preconditions
+- Prefer local/offline-safe execution.
+- Do not require network calls for normal refresh.
 
 ## Steps
-1. Check installed vs latest release version:
-   - local: `knowledge-cli version` (or `missing` if command is unavailable)
-   - latest: `curl -fsSL https://api.github.com/repos/vincepr/aitoolbox/releases/latest | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p' | head -n1`
-2. If local major version differs from latest major version, run DB migration(s) first:
-   - like `bash scripts/migrate-knowledge-db.sh` and follow migration guidance.
-   - if the migration script is missing or blocked, stop and ask the user before continuing.
-3. If missing/outdated, install or update:
-   - `cargo install --path crates/knowledge-cli --locked`
-   - if permission or environment policy blocks install, stop and ask the user to run the install command.
-4. Ensure baseline files exist:
-   - `knowledge-cli quickstart [--db ... --notes-root ... --source-file ...]`
-5. Upsert entity mappings from source:
+1. Verify CLI availability:
+   - `knowledge-cli version`
+   - If missing: return `blocked` with install command.
+2. Run migration gate:
+   - `bash scripts/migrate-knowledge-db.sh`
+   - If migration is required and fails: return `blocked` with exact failure reason.
+3. Assert config authority and startup validity:
+   - run `knowledge-cli quickstart [overrides...]`
+   - respect typed config precedence (CLI overrides > env/config > defaults).
+4. Upsert mappings from source:
    - `knowledge-cli init --source-file <path> [--db ...]`
-6. Detect missing or stale mappings from current folder/repo structure.
-7. Apply low-risk corrections directly (safe local updates only).
-8. If uncertainty remains, create concise tracked records:
-   - `knowledge-cli capture-issue --slug <slug> --body <short-body> [--db ... --notes-root ...]`
-   - `knowledge-cli capture-lesson --slug <slug> --body <short-body> [--db ... --notes-root ...]`
+5. Detect stale/missing mappings from current workspace hints.
+6. Apply only low-risk local corrections.
+7. Record unresolved uncertainty as issue/lesson:
+   - `knowledge-cli capture-issue ...`
+   - `knowledge-cli capture-lesson ...`
 
 ## Embedded Apply Policy
 - Never invent domain/system facts.
-- If evidence is weak: record issue instead of mutating mappings.
-- Keep lesson/issue bodies short and action-oriented.
+- Never mutate uncertain mappings without strong evidence.
+- Prefer issue creation over speculative correction.
 
-## Output (keep compact)
+## Output (strict)
 - `status`: `ok|partial|blocked`
+- `migration`: `not_needed|applied|failed|unknown`
+- `config_authority`: `ok|warning|failed`
 - `changes`: `repos_added,repos_updated,anchors_added,lessons_applied,issues_created`
 - `missing_inputs`: short list
 - `next_step`: one line
+
+## Stop Conditions
+Return `blocked` when:
+- `knowledge-cli` is unavailable and cannot be installed in-session
+- migration required but unsuccessful
+- mandatory source input is unavailable
