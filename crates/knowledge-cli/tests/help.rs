@@ -15,6 +15,9 @@ fn help_lists_knowledge_subcommands() {
         .stdout(predicates::str::contains("quickstart"))
         .stdout(predicates::str::contains("capture-lesson"))
         .stdout(predicates::str::contains("capture-issue"))
+        .stdout(predicates::str::contains("pipeline-enqueue"))
+        .stdout(predicates::str::contains("pipeline-run-once"))
+        .stdout(predicates::str::contains("pipeline-status"))
         .stdout(predicates::str::contains("completions"))
         .stdout(predicates::str::contains("alias"))
         .stdout(predicates::str::contains("version"));

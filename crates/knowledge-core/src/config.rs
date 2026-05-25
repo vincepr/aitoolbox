@@ -3,10 +3,17 @@ use serde::Deserialize;
 
 const DEFAULT_RECALL_TOP_K: u32 = 5;
 const MAX_RECALL_TOP_K: u32 = 100;
+const DEFAULT_PIPELINE_MAX_ATTEMPTS: u32 = 3;
+const MAX_PIPELINE_MAX_ATTEMPTS: u32 = 100;
+const DEFAULT_PIPELINE_PROVIDER_BATCH_SIZE: u32 = 32;
+const MAX_PIPELINE_PROVIDER_BATCH_SIZE: u32 = 1024;
+const DEFAULT_PIPELINE_PROVIDER_TIMEOUT_MS: u64 = 3_000;
+const MAX_PIPELINE_PROVIDER_TIMEOUT_MS: u64 = 300_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveConfig {
     pub recall: RecallConfig,
+    pub pipeline: PipelineConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,15 +21,50 @@ pub struct RecallConfig {
     pub top_k: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineConfig {
+    pub enabled: bool,
+    pub max_attempts: u32,
+    pub provider: PipelineProviderConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineProviderConfig {
+    pub kind: String,
+    pub runtime: String,
+    pub model: String,
+    pub batch_size: u32,
+    pub timeout_ms: u64,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct FileConfig {
     #[serde(default)]
     recall: FileRecallConfig,
+    #[serde(default)]
+    pipeline: FilePipelineConfig,
 }
 
 #[derive(Debug, Deserialize, Default)]
 struct FileRecallConfig {
     top_k: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct FilePipelineConfig {
+    enabled: Option<bool>,
+    max_attempts: Option<u32>,
+    #[serde(default)]
+    provider: FilePipelineProviderConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct FilePipelineProviderConfig {
+    kind: Option<String>,
+    runtime: Option<String>,
+    model: Option<String>,
+    batch_size: Option<u32>,
+    timeout_ms: Option<u64>,
 }
 
 /// Resolves effective config values with precedence: file -> env -> CLI.
@@ -62,8 +104,77 @@ pub fn resolve(
         );
     }
 
+    let max_attempts = file_cfg
+        .pipeline
+        .max_attempts
+        .unwrap_or(DEFAULT_PIPELINE_MAX_ATTEMPTS);
+    if max_attempts == 0 || max_attempts > MAX_PIPELINE_MAX_ATTEMPTS {
+        anyhow::bail!(
+            "invalid config: pipeline.max_attempts must be between 1 and {MAX_PIPELINE_MAX_ATTEMPTS}, got {max_attempts}"
+        );
+    }
+
+    let provider_batch_size = file_cfg
+        .pipeline
+        .provider
+        .batch_size
+        .unwrap_or(DEFAULT_PIPELINE_PROVIDER_BATCH_SIZE);
+    if provider_batch_size == 0 || provider_batch_size > MAX_PIPELINE_PROVIDER_BATCH_SIZE {
+        anyhow::bail!(
+            "invalid config: pipeline.provider.batch_size must be between 1 and {MAX_PIPELINE_PROVIDER_BATCH_SIZE}, got {provider_batch_size}"
+        );
+    }
+
+    let provider_timeout_ms = file_cfg
+        .pipeline
+        .provider
+        .timeout_ms
+        .unwrap_or(DEFAULT_PIPELINE_PROVIDER_TIMEOUT_MS);
+    if provider_timeout_ms == 0 || provider_timeout_ms > MAX_PIPELINE_PROVIDER_TIMEOUT_MS {
+        anyhow::bail!(
+            "invalid config: pipeline.provider.timeout_ms must be between 1 and {MAX_PIPELINE_PROVIDER_TIMEOUT_MS}, got {provider_timeout_ms}"
+        );
+    }
+
+    let provider_kind = file_cfg
+        .pipeline
+        .provider
+        .kind
+        .unwrap_or_else(|| "disabled".to_string());
+    let provider_runtime = file_cfg
+        .pipeline
+        .provider
+        .runtime
+        .unwrap_or_else(|| "none".to_string());
+    let provider_model = file_cfg
+        .pipeline
+        .provider
+        .model
+        .unwrap_or_else(|| "none".to_string());
+
+    if provider_kind.trim().is_empty() {
+        anyhow::bail!("invalid config: pipeline.provider.kind must be a non-empty string");
+    }
+    if provider_runtime.trim().is_empty() {
+        anyhow::bail!("invalid config: pipeline.provider.runtime must be a non-empty string");
+    }
+    if provider_model.trim().is_empty() {
+        anyhow::bail!("invalid config: pipeline.provider.model must be a non-empty string");
+    }
+
     Ok(EffectiveConfig {
         recall: RecallConfig { top_k },
+        pipeline: PipelineConfig {
+            enabled: file_cfg.pipeline.enabled.unwrap_or(false),
+            max_attempts,
+            provider: PipelineProviderConfig {
+                kind: provider_kind,
+                runtime: provider_runtime,
+                model: provider_model,
+                batch_size: provider_batch_size,
+                timeout_ms: provider_timeout_ms,
+            },
+        },
     })
 }
 

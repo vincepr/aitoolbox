@@ -6,6 +6,7 @@ use knowledge_core::audit::list_entity_history;
 use knowledge_core::capture::{capture_issue, capture_lesson};
 use knowledge_core::config::{resolve as resolve_config, EffectiveConfig};
 use knowledge_core::import::{apply_source_file, apply_source_json};
+use knowledge_core::ingest::{enqueue_job, queue_status, run_once, DisabledProvider};
 use knowledge_core::notes::NoteStore;
 use knowledge_core::schema::{bootstrap, schema_version, verify_schema};
 use knowledge_core::store::KnowledgeStore;
@@ -186,6 +187,27 @@ enum Command {
         #[arg(long, default_value_t = 20, help = "Maximum number of history rows")]
         limit: u32,
     },
+    #[command(about = "Queue one raw payload for background ingestion")]
+    PipelineEnqueue {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, help = "Stable dedupe key used to avoid duplicate queued jobs")]
+        dedupe_key: String,
+        #[arg(long, help = "Raw payload to enqueue")]
+        payload: String,
+        #[arg(long, help = "Override max retry attempts for this job")]
+        max_attempts: Option<u32>,
+    },
+    #[command(about = "Run one queued ingestion job")]
+    PipelineRunOnce {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+    },
+    #[command(about = "Show ingestion queue counts")]
+    PipelineStatus {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -322,6 +344,19 @@ fn run(cli: Cli) -> Result<()> {
         Command::History { db, entity, limit } => {
             handle_history(resolve_db_path(db)?, &entity, limit)
         }
+        Command::PipelineEnqueue {
+            db,
+            dedupe_key,
+            payload,
+            max_attempts,
+        } => handle_pipeline_enqueue(
+            resolve_db_path(db)?,
+            &dedupe_key,
+            &payload,
+            max_attempts.unwrap_or(_effective_config.pipeline.max_attempts),
+        ),
+        Command::PipelineRunOnce { db } => handle_pipeline_run_once(resolve_db_path(db)?),
+        Command::PipelineStatus { db } => handle_pipeline_status(resolve_db_path(db)?),
     }
 }
 
@@ -640,6 +675,58 @@ fn handle_history(db: Utf8PathBuf, entity: &str, limit: u32) -> Result<()> {
     for row in rows {
         println!("{}\t{}\t{}", row.created_at, row.actor, row.operation);
     }
+    Ok(())
+}
+
+fn handle_pipeline_enqueue(
+    db: Utf8PathBuf,
+    dedupe_key: &str,
+    payload: &str,
+    max_attempts: u32,
+) -> Result<()> {
+    let conn = open_bootstrapped_db(&db)?;
+    let result = enqueue_job(&conn, payload, dedupe_key, max_attempts)?;
+    println!(
+        "job_id={};state=queued;deduped={}",
+        result.job_id, result.deduped
+    );
+    Ok(())
+}
+
+fn handle_pipeline_run_once(db: Utf8PathBuf) -> Result<()> {
+    let conn = open_bootstrapped_db(&db)?;
+    let provider = DisabledProvider;
+    match run_once(&conn, &provider)? {
+        Some(outcome) => {
+            let error = outcome.error.unwrap_or_default();
+            println!(
+                "job_id={};state={};phase={};attempts={};error={}",
+                outcome.job_id,
+                match outcome.state {
+                    knowledge_core::ingest::IngestState::Queued => "queued",
+                    knowledge_core::ingest::IngestState::Processing => "processing",
+                    knowledge_core::ingest::IngestState::Succeeded => "succeeded",
+                    knowledge_core::ingest::IngestState::Failed => "failed",
+                },
+                match outcome.phase {
+                    knowledge_core::ingest::IngestPhase::Parse => "parse",
+                    knowledge_core::ingest::IngestPhase::Normalize => "normalize",
+                    knowledge_core::ingest::IngestPhase::Classify => "classify",
+                    knowledge_core::ingest::IngestPhase::Persist => "persist",
+                },
+                outcome.attempts,
+                error
+            );
+        }
+        None => println!("no_queued_jobs=true"),
+    }
+    Ok(())
+}
+
+fn handle_pipeline_status(db: Utf8PathBuf) -> Result<()> {
+    let conn = open_bootstrapped_db(&db)?;
+    let (queued, processing, failed) = queue_status(&conn)?;
+    println!("queued={queued};processing={processing};failed={failed}");
     Ok(())
 }
 
