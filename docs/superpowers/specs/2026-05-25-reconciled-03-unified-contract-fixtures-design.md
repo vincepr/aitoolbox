@@ -5,7 +5,7 @@
 ## Scope
 - Define versioned DTO fixture files.
 - Use fixtures in CLI and SDK contract tests.
-- Add `CONTRACT_TESTING.md` policy.
+- Add `CONTRACT_TESTING` policy to AGENTS.md (and comment in code in suitable place(s))
 
 ## Requirements
 1. Fixture schema must be explicit and versioned.

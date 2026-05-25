@@ -4,6 +4,7 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::generate;
 use knowledge_core::audit::list_entity_history;
 use knowledge_core::capture::{capture_issue, capture_lesson};
+use knowledge_core::config::{resolve as resolve_config, EffectiveConfig};
 use knowledge_core::import::{apply_source_file, apply_source_json};
 use knowledge_core::notes::NoteStore;
 use knowledge_core::schema::{bootstrap, schema_version, verify_schema};
@@ -18,6 +19,8 @@ use std::path::PathBuf;
 const DB_ENV: &str = "KNOWLEDGE_CLI_DB";
 const NOTES_ROOT_ENV: &str = "KNOWLEDGE_CLI_NOTES_ROOT";
 const SOURCE_FILE_ENV: &str = "KNOWLEDGE_CLI_SOURCE_FILE";
+const CONFIG_FILE_ENV: &str = "KNOWLEDGE_CLI_CONFIG_FILE";
+const RECALL_TOP_K_ENV: &str = "KNOWLEDGE_CLI_RECALL_TOP_K";
 const DEFAULT_SOURCE_JSON: &str = "{\n  \"entities\": []\n}\n";
 
 #[derive(Parser)]
@@ -29,6 +32,18 @@ const DEFAULT_SOURCE_JSON: &str = "{\n  \"entities\": []\n}\n";
     after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\nExamples (normal):\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash\nExamples (edge-case overrides):\n  knowledge-cli get MyCompanyName.Ebay.Custom.Client --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'text' --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes"
 )]
 struct Cli {
+    #[arg(
+        long,
+        global = true,
+        help = "Path to config JSON file used for runtime behavior defaults"
+    )]
+    config_file: Option<Utf8PathBuf>,
+    #[arg(
+        long,
+        global = true,
+        help = "Recall top-k override (highest precedence)"
+    )]
+    recall_top_k: Option<u32>,
     #[command(subcommand)]
     command: Command,
 }
@@ -222,11 +237,14 @@ fn load_json_input(
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt().without_time().init();
-    run(Cli::parse().command)
+    run(Cli::parse())
 }
 
-fn run(command: Command) -> Result<()> {
-    match command {
+fn run(cli: Cli) -> Result<()> {
+    // Validate config before command execution so invalid settings fail fast.
+    let _effective_config = resolve_effective_config(&cli.config_file, cli.recall_top_k)?;
+
+    match cli.command {
         Command::Init {
             db,
             source_file,
@@ -305,6 +323,33 @@ fn run(command: Command) -> Result<()> {
             handle_history(resolve_db_path(db)?, &entity, limit)
         }
     }
+}
+
+fn resolve_effective_config(
+    cli_config_path: &Option<Utf8PathBuf>,
+    cli_recall_top_k: Option<u32>,
+) -> Result<EffectiveConfig> {
+    let config_path = if cli_config_path.is_some() {
+        cli_config_path.clone()
+    } else {
+        env_path(CONFIG_FILE_ENV)?
+    };
+    let file_json = match config_path {
+        Some(path) => {
+            let raw = fs::read_to_string(path.as_std_path())
+                .with_context(|| format!("failed to read config file: {path}"))?;
+            Some(raw)
+        }
+        None => None,
+    };
+
+    let env_recall_top_k = env::var(RECALL_TOP_K_ENV)
+        .ok()
+        .map(|raw| raw.parse::<u32>())
+        .transpose()
+        .context("failed to parse KNOWLEDGE_CLI_RECALL_TOP_K as u32")?;
+
+    resolve_config(file_json.as_deref(), env_recall_top_k, cli_recall_top_k)
 }
 
 fn resolve_db_path(cli_value: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {

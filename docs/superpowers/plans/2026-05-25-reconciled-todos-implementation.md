@@ -179,7 +179,7 @@ git commit -m "test: unify cli contracts with versioned fixtures"
 - Modify: `config/README.md`
 - Test: `crates/knowledge-core/tests/config_resolution.rs` (create)
 
-- [ ] **Step 1: Write failing precedence test**
+- [x] **Step 1: Write failing precedence test**
 ```rust
 #[test]
 fn precedence_is_file_then_env_then_cli() {
@@ -191,11 +191,11 @@ fn precedence_is_file_then_env_then_cli() {
 }
 ```
 
-- [ ] **Step 2: Run test and verify failure**
+- [x] **Step 2: Run test and verify failure**
 Run: `cargo test -p knowledge-core config_resolution -v`
 Expected: FAIL until resolver exists.
 
-- [ ] **Step 3: Implement typed config and validation**
+- [x] **Step 3: Implement typed config and validation**
 ```rust
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct EffectiveConfig {
@@ -203,11 +203,11 @@ pub struct EffectiveConfig {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 Run: `cargo test -p knowledge-core config_resolution -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add crates/knowledge-core/src/config.rs crates/knowledge-core/src/lib.rs crates/knowledge-cli/src/main.rs crates/knowledge-core/tests/config_resolution.rs config/README.md
 git commit -m "feat: add typed config precedence and startup validation"

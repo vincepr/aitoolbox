@@ -2,6 +2,8 @@
 pub mod audit;
 /// Note capture helpers for lesson and issue entities.
 pub mod capture;
+/// Typed runtime configuration resolution and validation.
+pub mod config;
 /// Source import APIs for loading entities from JSON.
 pub mod import;
 /// Ordered schema migration definitions.
