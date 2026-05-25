@@ -176,7 +176,10 @@ fn build_recency_scores(candidates: &[Candidate], recency_weight: i64) -> HashMa
     let max = ordered.len() as i64;
     for (idx, candidate) in ordered.into_iter().enumerate() {
         let rank_bonus = (max - (idx as i64)).max(1);
-        map.insert(candidate.canonical_name.clone(), rank_bonus * recency_weight);
+        map.insert(
+            candidate.canonical_name.clone(),
+            rank_bonus * recency_weight,
+        );
     }
     map
 }
