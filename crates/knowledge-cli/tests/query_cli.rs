@@ -232,6 +232,174 @@ fn get_command_reports_no_match_as_informational_success() {
 }
 
 #[test]
+fn get_command_prints_local_and_git_when_both_locations_exist() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "entities": [
+            {
+              "canonical_name": "MyCompanyName.Ebay.Custom.Client",
+              "kind": "library",
+              "local_path": "/workspace/MyCompanyName.Ebay.Custom.Client",
+              "git_url": "https://example.com/repo.git"
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "get",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "MyCompanyName.Ebay.Custom.Client",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let text = String::from_utf8(output).unwrap();
+    assert_eq!(
+        text,
+        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\nlocal: /workspace/MyCompanyName.Ebay.Custom.Client\ngit:   https://example.com/repo.git\n"
+    );
+}
+
+#[test]
+fn get_command_prints_only_git_when_location_is_partial() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "entities": [
+            {
+              "canonical_name": "MyCompanyName.Ebay.Custom.Client",
+              "kind": "library",
+              "git_url": "https://example.com/repo.git"
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "get",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "MyCompanyName.Ebay.Custom.Client",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let text = String::from_utf8(output).unwrap();
+    assert_eq!(
+        text,
+        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\ngit:   https://example.com/repo.git\n"
+    );
+}
+
+#[test]
+fn get_command_keeps_two_line_output_when_location_absent() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "entities": [
+            {
+              "canonical_name": "MyCompanyName.Ebay.Custom.Client",
+              "kind": "library"
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "get",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "MyCompanyName.Ebay.Custom.Client",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let text = String::from_utf8(output).unwrap();
+    assert_eq!(
+        text,
+        "MyCompanyName.Ebay.Custom.Client\nNo note summary stored\n"
+    );
+}
+
+#[test]
 fn init_source_json_parse_errors_include_flag_context() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");

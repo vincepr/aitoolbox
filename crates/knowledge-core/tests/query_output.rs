@@ -36,6 +36,7 @@ fn exact_query_loads_only_the_primary_note_summary() {
         .unwrap();
 
     assert_eq!(answer.summary, "Used to call Ebay custom endpoints.");
+    assert!(answer.location.is_none());
     assert!(answer.navigation_hints.is_empty());
 }
 

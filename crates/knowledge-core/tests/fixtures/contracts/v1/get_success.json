@@ -1,5 +1,6 @@
 {
   "entity": "MyCompanyName.Ebay.Custom.Client",
   "status": "ok",
-  "summary": "No note summary stored"
+  "summary": "No note summary stored",
+  "location": null
 }
