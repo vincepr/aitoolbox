@@ -212,3 +212,56 @@ fn query_exact_returns_location_when_present() {
         Some("https://example.com/repo.git")
     );
 }
+
+#[test]
+fn exact_lookup_matches_separator_variants_directly() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+
+    let entity_id = store
+        .upsert_entity(EntityInput {
+            canonical_name: "laika-marketplaces-jobs-pricestock".to_string(),
+            kind: EntityKind::Library,
+            summary: String::new(),
+            namespace: Some("Relaxdays.Laika.Marketplaces.Jobs.PriceStock".to_string()),
+            package_name: Some("Relaxdays.Laika.Marketplaces.Jobs.PriceStock".to_string()),
+            repo_name: Some("PriceStock".to_string()),
+        })
+        .unwrap();
+    conn.execute(
+        "INSERT INTO aliases (entity_id, alias) VALUES (?1, ?2)",
+        (
+            entity_id,
+            "laika/Marketplaces/Jobs/PriceStock".to_ascii_lowercase(),
+        ),
+    )
+    .unwrap();
+
+    for query in [
+        "laika-marketplaces-jobs-pricestock",
+        "Laika.Marketplaces.Jobs.PriceStock",
+        "laika/Marketplaces/Jobs/PriceStock",
+        "laika_marketplaces.jobs-pricestock",
+    ] {
+        let result = store.lookup_exact(query).unwrap().expect("match");
+        assert_eq!(
+            result.entity.canonical_name,
+            "laika-marketplaces-jobs-pricestock"
+        );
+    }
+}
+
+#[test]
+fn exact_lookup_requires_all_query_tokens_for_candidate_match() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+
+    store
+        .upsert_entity(EntityInput::new("alpha-beta", EntityKind::Library))
+        .unwrap();
+
+    let result = store.lookup_exact("alpha-gamma").unwrap();
+    assert!(result.is_none());
+}
