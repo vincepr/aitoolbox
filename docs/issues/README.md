@@ -18,5 +18,6 @@ The `knowledge-get` skill is meant to be the first step before agents decompile 
 | 3 | [03-no-discovery-subcommand.md](03-no-discovery-subcommand.md) | `[planned]` | medium | Lookup works without prior knowledge of canonical names |
 | 4 | [04-ingestion-under-populates-aliases.md](04-ingestion-under-populates-aliases.md) | `[planned]` | medium | Natural queries (full .NET namespace, class names) start matching |
 | 5 | [05-skill-doesnt-teach-naming.md](05-skill-doesnt-teach-naming.md) | `[planned]` | trivial | Agents stop blindly trying dot-PascalCase names |
+| 6 | [06-required-explicit-null-input-schema.md](06-required-explicit-null-input-schema.md) | `[planned]` | medium | Capture inputs require every field — even when ingestion can't auto-derive, the gap is visible instead of silent |
 
-Issues 1 and 5 unblock agents using the tool as-is. Issues 2, 3, 4 are the durable fixes.
+Issues 1 and 5 unblock agents using the tool as-is. Issues 2, 3, 4 are the durable runtime fixes. Issue 6 is the schema-side counterpart to 4 — auto-fill what we can, force-think the rest.
