@@ -101,6 +101,17 @@ pub struct EntityLocation {
     pub git_url: Option<String>,
 }
 
+/// Listing record rendered by discovery-style CLI queries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListEntityRecord {
+    /// Canonical entity identifier.
+    pub canonical_name: String,
+    /// Stored kind string.
+    pub kind: String,
+    /// Repository alias, or empty string when not set.
+    pub repo_name: String,
+}
+
 /// Extracts the first non-heading paragraph from markdown.
 ///
 /// # Arguments
@@ -364,6 +375,59 @@ impl<'a> KnowledgeStore<'a> {
                 }
             });
         Ok(location)
+    }
+
+    /// Lists entities for discovery using optional pattern and kind filters.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - Optional case-insensitive substring matched across canonical name,
+    ///   namespace, package name, repo name, and aliases.
+    /// * `kind` - Optional kind filter using persisted lowercase values.
+    /// * `limit` - Maximum number of rows to return.
+    ///
+    /// # Returns
+    ///
+    /// Ordered entity rows suitable for CLI display.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when SQL query preparation or execution fails.
+    pub fn list(
+        &self,
+        pattern: Option<&str>,
+        kind: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<ListEntityRecord>> {
+        let pattern = pattern.map(|value| format!("%{value}%"));
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT DISTINCT e.canonical_name, e.kind, COALESCE(e.repo_name, '')
+            FROM entities e
+            LEFT JOIN aliases a ON a.entity_id = e.id
+            WHERE (?1 IS NULL OR (
+                e.canonical_name LIKE ?1 COLLATE NOCASE
+                OR e.namespace LIKE ?1 COLLATE NOCASE
+                OR e.package_name LIKE ?1 COLLATE NOCASE
+                OR e.repo_name LIKE ?1 COLLATE NOCASE
+                OR a.alias LIKE ?1 COLLATE NOCASE
+            ))
+              AND (?2 IS NULL OR e.kind = ?2)
+            ORDER BY e.canonical_name, e.id
+            LIMIT ?3
+            ",
+        )?;
+
+        let records = stmt
+            .query_map(params![pattern.as_deref(), kind, i64::from(limit)], |row| {
+                Ok(ListEntityRecord {
+                    canonical_name: row.get(0)?,
+                    kind: row.get(1)?,
+                    repo_name: row.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(records)
     }
 
     fn find_primary_entity(&self, query: &str) -> Result<Option<EntityRecord>> {
