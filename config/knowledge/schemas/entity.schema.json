@@ -5,6 +5,10 @@
     "required": ["$schema", "entities"],
     "properties": {
         "$schema": {"const": "https://aitoolbox/schemas/entity.v1.json"},
+        "namespace_prefix_mappings": {
+            "type": "object",
+            "additionalProperties": {"type": "string"}
+        },
         "entities": {
             "type": "array",
             "items": {

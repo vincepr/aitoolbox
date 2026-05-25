@@ -307,6 +307,7 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
     bootstrap(&conn).unwrap();
 
     let source = r#"{
+      "$schema": "https://aitoolbox/schemas/entity.v1.json",
       "namespace_prefix_mappings": {
         "laika": "Relaxdays.Laika"
       },
@@ -314,7 +315,14 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
         {
           "canonical_name": "laika-marketplaces-jobs-pricestock",
           "kind": "project",
+          "summary": null,
+          "namespace": null,
+          "package_name": null,
           "repo_name": "PriceStock"
+          ,
+          "aliases": null,
+          "location": null,
+          "notes": null
         }
       ]
     }"#;
@@ -383,13 +391,21 @@ fn source_file_uses_configured_mapping_without_hardcoded_prefixes() {
     bootstrap(&conn).unwrap();
 
     let source = r#"{
+      "$schema": "https://aitoolbox/schemas/entity.v1.json",
       "namespace_prefix_mappings": {
         "acme": "Contoso.Platform"
       },
       "entities": [
         {
           "canonical_name": "acme-observability-agent",
-          "kind": "library"
+          "kind": "library",
+          "summary": null,
+          "namespace": null,
+          "package_name": null,
+          "repo_name": null,
+          "aliases": null,
+          "location": null,
+          "notes": null
         }
       ]
     }"#;
