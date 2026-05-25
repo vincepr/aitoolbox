@@ -1,6 +1,6 @@
 {
   "namespace_prefix_mappings": {
-    "laika": "Relaxdays.Laika"
+    "laika": "CompanyName.Laika"
   },
   "entities": [
     {

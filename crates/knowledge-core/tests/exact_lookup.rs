@@ -224,8 +224,8 @@ fn exact_lookup_matches_separator_variants_directly() {
             canonical_name: "laika-marketplaces-jobs-pricestock".to_string(),
             kind: EntityKind::Library,
             summary: String::new(),
-            namespace: Some("Relaxdays.Laika.Marketplaces.Jobs.PriceStock".to_string()),
-            package_name: Some("Relaxdays.Laika.Marketplaces.Jobs.PriceStock".to_string()),
+            namespace: Some("CompanyName.Laika.Marketplaces.Jobs.PriceStock".to_string()),
+            package_name: Some("CompanyName.Laika.Marketplaces.Jobs.PriceStock".to_string()),
             repo_name: Some("PriceStock".to_string()),
         })
         .unwrap();

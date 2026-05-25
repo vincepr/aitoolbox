@@ -309,7 +309,7 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
     let source = r#"{
       "$schema": "https://aitoolbox/schemas/entity.v1.json",
       "namespace_prefix_mappings": {
-        "laika": "Relaxdays.Laika"
+        "laika": "CompanyName.Laika"
       },
       "entities": [
         {
@@ -342,8 +342,8 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
         )
         .unwrap();
 
-    assert_eq!(namespace, "Relaxdays.Laika.Marketplaces.Jobs.PriceStock");
-    assert_eq!(package_name, "Relaxdays.Laika.Marketplaces.Jobs.PriceStock");
+    assert_eq!(namespace, "CompanyName.Laika.Marketplaces.Jobs.PriceStock");
+    assert_eq!(package_name, "CompanyName.Laika.Marketplaces.Jobs.PriceStock");
 
     let alias_count: i64 = conn
         .query_row(
@@ -359,7 +359,7 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
     assert_eq!(alias_count, 4);
 
     let aliases = [
-        "Relaxdays.Laika.Marketplaces.Jobs.PriceStock",
+        "CompanyName.Laika.Marketplaces.Jobs.PriceStock",
         "laika/Marketplaces/Jobs/PriceStock",
         "Laika.Marketplaces.Jobs.PriceStock",
         "PriceStock",

@@ -11,7 +11,7 @@ use crate::model::EntityKind;
 /// Top-level JSON source document used for batch import.
 #[derive(Debug, Deserialize)]
 pub struct SourceFile {
-    /// Mapping from canonical-name prefix to namespace prefix, e.g. `laika -> Relaxdays.Laika`.
+    /// Mapping from canonical-name prefix to namespace prefix, e.g. `laika -> CompanyName.Laika`.
     #[serde(default)]
     pub namespace_prefix_mappings: std::collections::BTreeMap<String, String>,
     /// Input schema URI for versioned validation.

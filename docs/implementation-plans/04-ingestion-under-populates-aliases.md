@@ -5,7 +5,7 @@
 
 ## Scope
 - Fill `namespace`, `package_name`, and deterministic alias set during ingestion.
-- Add configurable prefix mapping (e.g. `laika -> Relaxdays.Laika`) from source config.
+- Add configurable prefix mapping (e.g. `laika -> CompanyName.Laika`) from source config.
 
 ## Files
 - Modify: `crates/knowledge-core/src/ingest.rs`
