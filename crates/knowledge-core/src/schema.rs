@@ -1,74 +1,60 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
-/// Creates the SQLite schema required by the knowledge system.
+use crate::migrations::{apply_all, current_schema_version, latest_migration_version};
+
+/// Applies all known migrations for the knowledge schema.
 ///
 /// # Arguments
 ///
-/// * `conn` - Open SQLite connection to bootstrap.
+/// * `conn` - Open SQLite connection to migrate.
 ///
 /// # Returns
 ///
-/// `Ok(())` when all tables and indexes exist.
+/// `Ok(())` when the latest schema is installed.
 ///
 /// # Errors
 ///
-/// Returns an error when SQL execution fails.
+/// Returns an error when migration SQL fails.
 pub fn bootstrap(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        "
-        PRAGMA foreign_keys = ON;
+    apply_all(conn)
+}
 
-        CREATE TABLE IF NOT EXISTS entities (
-            id INTEGER PRIMARY KEY,
-            canonical_name TEXT NOT NULL UNIQUE,
-            kind TEXT NOT NULL,
-            summary TEXT NOT NULL DEFAULT '',
-            namespace TEXT,
-            package_name TEXT,
-            repo_name TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS aliases (
-            entity_id INTEGER NOT NULL,
-            alias TEXT NOT NULL,
-            UNIQUE(entity_id, alias),
-            FOREIGN KEY(entity_id) REFERENCES entities(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS relationships (
-            from_entity_id INTEGER NOT NULL,
-            to_entity_id INTEGER NOT NULL,
-            kind TEXT NOT NULL,
-            UNIQUE(from_entity_id, to_entity_id, kind),
-            FOREIGN KEY(from_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
-            FOREIGN KEY(to_entity_id) REFERENCES entities(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS locations (
-            entity_id INTEGER NOT NULL,
-            local_path TEXT,
-            git_url TEXT,
-            UNIQUE(entity_id),
-            FOREIGN KEY(entity_id) REFERENCES entities(id) ON DELETE CASCADE
-        );
-
-        CREATE TABLE IF NOT EXISTS note_refs (
-            entity_id INTEGER NOT NULL,
-            note_path TEXT NOT NULL,
-            UNIQUE(entity_id),
-            FOREIGN KEY(entity_id) REFERENCES entities(id) ON DELETE CASCADE
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_entities_canonical_name ON entities(canonical_name);
-        CREATE INDEX IF NOT EXISTS idx_entities_namespace ON entities(namespace);
-        CREATE INDEX IF NOT EXISTS idx_entities_package_name ON entities(package_name);
-        CREATE INDEX IF NOT EXISTS idx_entities_repo_name ON entities(repo_name);
-        CREATE INDEX IF NOT EXISTS idx_aliases_alias ON aliases(alias);
-        ",
-    )?;
-
+/// Verifies that the connected database is on the latest supported schema version.
+///
+/// # Arguments
+///
+/// * `conn` - Open SQLite connection to verify.
+///
+/// # Returns
+///
+/// `Ok(())` when schema version exactly matches the latest migration version.
+///
+/// # Errors
+///
+/// Returns an error if the schema is behind or ahead of supported migrations.
+pub fn verify_schema(conn: &Connection) -> Result<()> {
+    let current = current_schema_version(conn)?;
+    let latest = latest_migration_version();
+    if current != latest {
+        anyhow::bail!("schema version mismatch: current={current} latest={latest}");
+    }
     Ok(())
+}
+
+/// Returns the current schema version for the connected database.
+///
+/// # Arguments
+///
+/// * `conn` - Open SQLite connection.
+///
+/// # Returns
+///
+/// Current schema version.
+///
+/// # Errors
+///
+/// Returns an error when the migration ledger cannot be read.
+pub fn schema_version(conn: &Connection) -> Result<i64> {
+    current_schema_version(conn)
 }

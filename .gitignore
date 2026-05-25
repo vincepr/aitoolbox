@@ -34,3 +34,6 @@ opencode.jsonc
 *.opencode.json
 CLAUDE.local.md
 CODEX.local.md
+
+# Local task scratchpad
+todos/

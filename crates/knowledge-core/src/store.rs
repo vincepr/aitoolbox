@@ -261,6 +261,31 @@ impl<'a> KnowledgeStore<'a> {
         Ok(Some(ExactLookup { entity, related }))
     }
 
+    /// Resolves an entity id by canonical name.
+    ///
+    /// # Arguments
+    ///
+    /// * `canonical_name` - Exact canonical entity identifier.
+    ///
+    /// # Returns
+    ///
+    /// `Some(id)` when the entity exists, otherwise `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQL queries fail.
+    pub fn find_entity_id_by_name(&self, canonical_name: &str) -> Result<Option<i64>> {
+        let id = self
+            .conn
+            .query_row(
+                "SELECT id FROM entities WHERE canonical_name = ?1 LIMIT 1",
+                [canonical_name],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?;
+        Ok(id)
+    }
+
     /// Resolves an entity and reads summary text from its attached note.
     ///
     /// # Arguments

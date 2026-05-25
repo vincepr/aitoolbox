@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use camino::Utf8Path;
 use rusqlite::{params, Connection};
 use serde::Deserialize;
+use std::hash::{Hash, Hasher};
 
+use crate::audit::{has_idempotency_key, record_mutation_event, MutationEvent};
 use crate::model::EntityKind;
 
 /// Top-level JSON source document used for batch import.
@@ -32,41 +34,12 @@ pub struct SourceEntity {
 }
 
 /// Applies a source JSON payload to the connected SQLite database.
-///
-/// # Arguments
-///
-/// * `conn` - Open SQLite connection.
-/// * `json` - Source JSON string with a top-level `entities` array.
-/// * `source_label` - Human-readable label included in parse errors.
-///
-/// # Returns
-///
-/// `Ok(())` after all entities and locations are upserted in one transaction.
-///
-/// # Errors
-///
-/// Returns an error if JSON parsing fails, if an entity kind is unsupported,
-/// or if any SQL operation fails.
-///
-/// # Examples
-///
-/// ```
-/// # use anyhow::Result;
-/// # use knowledge_core::import::apply_source_json;
-/// # use knowledge_core::schema::bootstrap;
-/// # use rusqlite::Connection;
-/// # fn demo() -> Result<()> {
-/// let conn = Connection::open_in_memory()?;
-/// bootstrap(&conn)?;
-/// apply_source_json(
-///     &conn,
-///     r#"{"entities":[{"canonical_name":"example.lib","kind":"library"}]}"#,
-///     "--source-json",
-/// )?;
-/// # Ok(())
-/// # }
-/// ```
 pub fn apply_source_json(conn: &Connection, json: &str, source_label: &str) -> Result<()> {
+    let idempotency_key = format!("import:{}:{}", source_label, stable_hash(json));
+    if has_idempotency_key(conn, &idempotency_key)? {
+        return Ok(());
+    }
+
     let source: SourceFile = serde_json::from_str(json)
         .with_context(|| format!("failed to parse source file: {source_label}"))?;
     let entities = source
@@ -77,26 +50,23 @@ pub fn apply_source_json(conn: &Connection, json: &str, source_label: &str) -> R
 
     let tx = conn.unchecked_transaction()?;
     apply_validated_source(&tx, entities)?;
+    record_mutation_event(
+        &tx,
+        &MutationEvent {
+            event_id: format!("import:{source_label}:{}", stable_hash(json)),
+            operation: "import_source_json".to_string(),
+            actor: "knowledge-cli".to_string(),
+            target_entity_id: None,
+            idempotency_key: Some(idempotency_key),
+            input_hash: stable_hash(json),
+        },
+    )?;
     tx.commit()?;
 
     Ok(())
 }
 
 /// Reads a source JSON file from disk and applies it to the connected database.
-///
-/// # Arguments
-///
-/// * `conn` - Open SQLite connection.
-/// * `path` - UTF-8 path to the source JSON file.
-///
-/// # Returns
-///
-/// `Ok(())` after the file is parsed and applied.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be read, the JSON is invalid, entity
-/// validation fails, or database writes fail.
 pub fn apply_source_file(conn: &Connection, path: &Utf8Path) -> Result<()> {
     let json = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read source file: {path}"))?;
@@ -200,4 +170,10 @@ fn parse_entity_kind(kind: &str) -> Result<EntityKind> {
         "issue" => Ok(EntityKind::Issue),
         other => anyhow::bail!("unsupported entity kind: {other}"),
     }
+}
+
+fn stable_hash(input: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    input.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
