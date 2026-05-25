@@ -1,5 +1,6 @@
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 
 use crate::model::{EntityKind, RelationshipKind};
 use crate::notes::{validate_note_relative_path, NoteStore};
@@ -79,14 +80,25 @@ pub struct ExactLookup {
 }
 
 /// Query result rendered by the CLI `get` command.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueryAnswer {
     /// Canonical matched entity identifier.
     pub canonical_name: String,
     /// Extracted note summary.
     pub summary: String,
+    /// Optional source location metadata when available in the index.
+    pub location: Option<EntityLocation>,
     /// Reserved navigation hints for future output expansions.
     pub navigation_hints: Vec<String>,
+}
+
+/// Source location metadata for an indexed entity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityLocation {
+    /// Optional local clone path.
+    pub local_path: Option<String>,
+    /// Optional remote Git URL.
+    pub git_url: Option<String>,
 }
 
 /// Extracts the first non-heading paragraph from markdown.
@@ -320,12 +332,38 @@ impl<'a> KnowledgeStore<'a> {
             Some(path) => first_paragraph(&notes.read_note(&path)?),
             None => String::new(),
         };
+        let location = self.load_entity_location(lookup.entity.id)?;
 
         Ok(Some(QueryAnswer {
             canonical_name: lookup.entity.canonical_name,
             summary,
+            location,
             navigation_hints: Vec::new(),
         }))
+    }
+
+    fn load_entity_location(&self, entity_id: i64) -> Result<Option<EntityLocation>> {
+        let location = self
+            .conn
+            .query_row(
+                "SELECT local_path, git_url FROM locations WHERE entity_id = ?1",
+                [entity_id],
+                |row| {
+                    Ok(EntityLocation {
+                        local_path: row.get::<_, Option<String>>(0)?,
+                        git_url: row.get::<_, Option<String>>(1)?,
+                    })
+                },
+            )
+            .optional()?
+            .and_then(|location| {
+                if location.local_path.is_none() && location.git_url.is_none() {
+                    None
+                } else {
+                    Some(location)
+                }
+            });
+        Ok(location)
     }
 
     fn find_primary_entity(&self, query: &str) -> Result<Option<EntityRecord>> {

@@ -1,7 +1,10 @@
+use camino::Utf8PathBuf;
 use knowledge_core::model::{EntityKind, RelationshipKind};
+use knowledge_core::notes::NoteStore;
 use knowledge_core::schema::bootstrap;
 use knowledge_core::store::{EntityInput, KnowledgeStore};
 use rusqlite::Connection;
+use tempfile::tempdir;
 
 #[test]
 fn lookup_by_namespace_expands_to_project_system_and_domain() {
@@ -174,4 +177,38 @@ fn graph_expansion_deduplicates_cycles_and_duplicate_paths() {
         .collect::<Vec<_>>();
 
     assert_eq!(related_names, vec!["first", "second"]);
+}
+
+#[test]
+fn query_exact_returns_location_when_present() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+    let temp = tempdir().unwrap();
+    let notes = NoteStore::new(Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap());
+    let canonical_name = "MyCompanyName.Ebay.Custom.Client";
+
+    let entity_id = store
+        .upsert_entity(EntityInput::new(canonical_name, EntityKind::Library))
+        .unwrap();
+    conn.execute(
+        "INSERT INTO locations (entity_id, local_path, git_url) VALUES (?1, ?2, ?3)",
+        (
+            entity_id,
+            "/workspace/MyCompanyName.Ebay.Custom.Client",
+            "https://example.com/repo.git",
+        ),
+    )
+    .unwrap();
+
+    let answer = store.query_exact(canonical_name, &notes).unwrap().unwrap();
+    let location = answer.location.expect("location should be present");
+    assert_eq!(
+        location.local_path.as_deref(),
+        Some("/workspace/MyCompanyName.Ebay.Custom.Client")
+    );
+    assert_eq!(
+        location.git_url.as_deref(),
+        Some("https://example.com/repo.git")
+    );
 }

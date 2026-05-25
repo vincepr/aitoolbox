@@ -617,11 +617,22 @@ fn parse_capture_payload(
 
 fn print_get_result(requested_entity: &str, answer: Option<knowledge_core::store::QueryAnswer>) {
     match answer {
-        Some(answer) if answer.summary.is_empty() => {
-            println!("{}\nNo note summary stored", answer.canonical_name);
-        }
         Some(answer) => {
-            println!("{}\n{}", answer.canonical_name, answer.summary);
+            println!("{}", answer.canonical_name);
+            if answer.summary.is_empty() {
+                println!("No note summary stored");
+            } else {
+                println!("{}", answer.summary);
+            }
+
+            if let Some(location) = answer.location {
+                if let Some(local_path) = location.local_path {
+                    println!("local: {}", local_path);
+                }
+                if let Some(git_url) = location.git_url {
+                    println!("git:   {}", git_url);
+                }
+            }
         }
         None => {
             println!("No exact entity match found for {}", requested_entity);

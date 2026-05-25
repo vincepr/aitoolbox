@@ -53,10 +53,25 @@ fn get_output_matches_contract_v1() {
 
     let text = String::from_utf8(out).unwrap();
     let lines: Vec<&str> = text.lines().collect();
+    let local_path = lines
+        .iter()
+        .find_map(|line| line.strip_prefix("local: ").map(str::to_string));
+    let git_url = lines
+        .iter()
+        .find_map(|line| line.strip_prefix("git:   ").map(str::to_string));
+    let location = if local_path.is_none() && git_url.is_none() {
+        Value::Null
+    } else {
+        serde_json::json!({
+            "local_path": local_path,
+            "git_url": git_url
+        })
+    };
     let actual = serde_json::json!({
         "entity": lines.first().copied().unwrap_or(""),
         "status": "ok",
-        "summary": lines.get(1).copied().unwrap_or("")
+        "summary": lines.get(1).copied().unwrap_or(""),
+        "location": location
     });
 
     let expected: Value = serde_json::from_str(include_str!(
