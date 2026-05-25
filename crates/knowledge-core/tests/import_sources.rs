@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use knowledge_core::import::{apply_source_file, SourceFile};
+use knowledge_core::import::{apply_source_file, apply_source_json, SourceFile};
 use knowledge_core::schema::bootstrap;
 use knowledge_core::store::KnowledgeStore;
 use rusqlite::Connection;
@@ -257,4 +257,112 @@ fn source_file_commit_failure_rolls_back_and_closes_transaction() {
     assert!(conn.is_autocommit());
     assert_eq!(entity_count, 0);
     assert_eq!(location_count, 0);
+}
+
+#[test]
+fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapping() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+
+    let source = r#"{
+      "namespace_prefix_mappings": {
+        "laika": "Relaxdays.Laika"
+      },
+      "entities": [
+        {
+          "canonical_name": "laika-marketplaces-jobs-pricestock",
+          "kind": "project",
+          "repo_name": "PriceStock"
+        }
+      ]
+    }"#;
+
+    apply_source_json(&conn, source, "source-a").unwrap();
+    apply_source_json(&conn, source, "source-b").unwrap();
+
+    let (namespace, package_name): (String, String) = conn
+        .query_row(
+            "
+            SELECT namespace, package_name
+            FROM entities
+            WHERE canonical_name = 'laika-marketplaces-jobs-pricestock'
+            ",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+
+    assert_eq!(namespace, "Relaxdays.Laika.Marketplaces.Jobs.PriceStock");
+    assert_eq!(package_name, "Relaxdays.Laika.Marketplaces.Jobs.PriceStock");
+
+    let alias_count: i64 = conn
+        .query_row(
+            "
+            SELECT COUNT(*) FROM aliases a
+            JOIN entities e ON e.id = a.entity_id
+            WHERE e.canonical_name = 'laika-marketplaces-jobs-pricestock'
+            ",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(alias_count, 4);
+
+    let aliases = [
+        "Relaxdays.Laika.Marketplaces.Jobs.PriceStock",
+        "laika/Marketplaces/Jobs/PriceStock",
+        "Laika.Marketplaces.Jobs.PriceStock",
+        "PriceStock",
+    ];
+    for alias in aliases {
+        let result = KnowledgeStore::new(&conn)
+            .lookup_exact(alias)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            result.entity.canonical_name,
+            "laika-marketplaces-jobs-pricestock"
+        );
+    }
+
+    let uppercase = KnowledgeStore::new(&conn)
+        .lookup_exact("RELAXDAYS.LAIKA.MARKETPLACES.JOBS.PRICESTOCK")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        uppercase.entity.canonical_name,
+        "laika-marketplaces-jobs-pricestock"
+    );
+}
+
+#[test]
+fn source_file_uses_configured_mapping_without_hardcoded_prefixes() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+
+    let source = r#"{
+      "namespace_prefix_mappings": {
+        "acme": "Contoso.Platform"
+      },
+      "entities": [
+        {
+          "canonical_name": "acme-observability-agent",
+          "kind": "library"
+        }
+      ]
+    }"#;
+    apply_source_json(&conn, source, "source-custom-prefix").unwrap();
+
+    let namespace: String = conn
+        .query_row(
+            "
+            SELECT namespace
+            FROM entities
+            WHERE canonical_name = 'acme-observability-agent'
+            ",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(namespace, "Contoso.Platform.Observability.Agent");
 }

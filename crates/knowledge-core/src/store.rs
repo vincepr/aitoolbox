@@ -438,20 +438,20 @@ impl<'a> KnowledgeStore<'a> {
                 SELECT id, canonical_name, kind
                 FROM entities e
                 WHERE e.canonical_name = ?1
-                    OR e.namespace = ?1
-                    OR e.package_name = ?1
-                    OR e.repo_name = ?1
+                    OR e.namespace = ?1 COLLATE NOCASE
+                    OR e.package_name = ?1 COLLATE NOCASE
+                    OR e.repo_name = ?1 COLLATE NOCASE
                     OR EXISTS (
                         SELECT 1
                         FROM aliases a
-                        WHERE a.entity_id = e.id AND a.alias = ?1
+                        WHERE a.entity_id = e.id AND a.alias = LOWER(?1)
                     )
                 ORDER BY
                     CASE
                         WHEN e.canonical_name = ?1 THEN 1
-                        WHEN e.namespace = ?1 THEN 2
-                        WHEN e.package_name = ?1 THEN 3
-                        WHEN e.repo_name = ?1 THEN 4
+                        WHEN e.namespace = ?1 COLLATE NOCASE THEN 2
+                        WHEN e.package_name = ?1 COLLATE NOCASE THEN 3
+                        WHEN e.repo_name = ?1 COLLATE NOCASE THEN 4
                         ELSE 5
                     END,
                     e.canonical_name,
