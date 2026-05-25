@@ -12,10 +12,11 @@ pub struct Migration {
     pub sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "baseline",
-    sql: r#"
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "baseline",
+        sql: r#"
         PRAGMA foreign_keys = ON;
 
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -96,7 +97,28 @@ const MIGRATIONS: &[Migration] = &[Migration {
         CREATE INDEX IF NOT EXISTS idx_mutation_events_created_at ON mutation_events(created_at);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_mutation_events_idempotency_key ON mutation_events(idempotency_key) WHERE idempotency_key IS NOT NULL;
     "#,
-}];
+    },
+    Migration {
+        version: 2,
+        name: "retrieval_telemetry",
+        sql: r#"
+        CREATE TABLE IF NOT EXISTS retrieval_telemetry (
+            id INTEGER PRIMARY KEY,
+            query TEXT NOT NULL,
+            match_source TEXT NOT NULL,
+            total_score INTEGER NOT NULL,
+            exact_score INTEGER NOT NULL,
+            alias_score INTEGER NOT NULL,
+            fts_score INTEGER NOT NULL,
+            graph_score INTEGER NOT NULL,
+            selected_entity TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_retrieval_telemetry_created_at ON retrieval_telemetry(created_at);
+    "#,
+    },
+];
 
 /// Returns the latest supported schema version.
 pub fn latest_migration_version() -> i64 {
