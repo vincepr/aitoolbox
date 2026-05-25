@@ -2,10 +2,11 @@ use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::generate;
+use knowledge_core::audit::list_entity_history;
 use knowledge_core::capture::{capture_issue, capture_lesson};
 use knowledge_core::import::{apply_source_file, apply_source_json};
 use knowledge_core::notes::NoteStore;
-use knowledge_core::schema::bootstrap;
+use knowledge_core::schema::{bootstrap, schema_version, verify_schema};
 use knowledge_core::store::KnowledgeStore;
 use rusqlite::Connection;
 use serde::Deserialize;
@@ -149,6 +150,27 @@ enum Command {
     },
     #[command(about = "Print the knowledge-cli version")]
     Version,
+    #[command(about = "Apply pending database migrations or verify schema compatibility")]
+    Migrate {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(
+            long,
+            help = "Only verify schema compatibility without applying migrations"
+        )]
+        verify: bool,
+        #[arg(long, help = "Print pending migration status without writing changes")]
+        dry_run: bool,
+    },
+    #[command(about = "Print recent mutation history for an entity")]
+    History {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(help = "Canonical entity name for history lookup")]
+        entity: String,
+        #[arg(long, default_value_t = 20, help = "Maximum number of history rows")]
+        limit: u32,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -273,6 +295,14 @@ fn run(command: Command) -> Result<()> {
         Command::Version => {
             print_version();
             Ok(())
+        }
+        Command::Migrate {
+            db,
+            verify,
+            dry_run,
+        } => handle_migrate(resolve_db_path(db)?, verify, dry_run),
+        Command::History { db, entity, limit } => {
+            handle_history(resolve_db_path(db)?, &entity, limit)
         }
     }
 }
@@ -524,6 +554,48 @@ fn handle_completions(shell: CompletionShell) {
     let mut stdout = io::stdout();
     let completion_shell: clap_complete::Shell = shell.into();
     generate(completion_shell, &mut command, "knowledge-cli", &mut stdout);
+}
+
+fn handle_migrate(db: Utf8PathBuf, verify: bool, dry_run: bool) -> Result<()> {
+    if let Some(parent) = db.parent() {
+        fs::create_dir_all(parent.as_std_path())
+            .with_context(|| format!("failed to create database directory: {parent}"))?;
+    }
+    let conn = Connection::open(db.as_std_path())
+        .with_context(|| format!("failed to open database: {db}"))?;
+
+    if dry_run {
+        let version = schema_version(&conn)?;
+        println!("current schema version: {version}");
+        return Ok(());
+    }
+
+    if verify {
+        verify_schema(&conn)?;
+        let version = schema_version(&conn)?;
+        println!("schema verified at version {version}");
+        return Ok(());
+    }
+
+    bootstrap(&conn)?;
+    let version = schema_version(&conn)?;
+    println!("migrations applied; schema version {version}");
+    Ok(())
+}
+
+fn handle_history(db: Utf8PathBuf, entity: &str, limit: u32) -> Result<()> {
+    let conn = open_bootstrapped_db(&db)?;
+    verify_schema(&conn)?;
+    let store = KnowledgeStore::new(&conn);
+    let entity_id = store
+        .find_entity_id_by_name(entity)?
+        .with_context(|| format!("entity not found: {entity}"))?;
+
+    let rows = list_entity_history(&conn, entity_id, limit)?;
+    for row in rows {
+        println!("{}\t{}\t{}", row.created_at, row.actor, row.operation);
+    }
+    Ok(())
 }
 
 impl From<CompletionShell> for clap_complete::Shell {
