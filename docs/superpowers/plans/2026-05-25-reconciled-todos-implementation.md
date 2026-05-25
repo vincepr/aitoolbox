@@ -19,6 +19,10 @@
 6. `docs/superpowers/specs/2026-05-25-reconciled-06-ingestion-pipeline-design.md`
 7. `docs/superpowers/specs/2026-05-25-reconciled-07-docs-code-audit-design.md`
 8. `docs/superpowers/specs/2026-05-25-reconciled-08-daemon-service-last-design.md`
+9. `docs/superpowers/specs/2026-05-25-reconciled-09-embedding-provider-abstraction-design.md`
+10. `docs/superpowers/specs/2026-05-25-reconciled-10-vector-storage-and-indexing-design.md`
+11. `docs/superpowers/specs/2026-05-25-reconciled-11-cli-embedding-workflows-design.md`
+12. `docs/superpowers/specs/2026-05-25-reconciled-12-daemon-parity-for-embeddings-design.md`
 
 ## File Structure Map
 - `crates/knowledge-core/src/schema.rs`: versioned migration engine, schema verify API.
@@ -366,6 +370,178 @@ Expected: PASS.
 ```bash
 git add crates/knowledge-daemon Cargo.toml crates/knowledge-cli/src/main.rs crates/knowledge-daemon/tests/endpoints.rs crates/knowledge-cli/tests/daemon_parity.rs
 git commit -m "feat: add axum daemon mode as final migration step"
+```
+
+### Task 9: Add embedding provider abstraction in core (CLI-first, replaceable)
+
+**Files:**
+- Create: `crates/knowledge-core/src/embed/provider.rs`
+- Create: `crates/knowledge-core/src/embed/mod.rs`
+- Modify: `crates/knowledge-core/src/config.rs`
+- Modify: `crates/knowledge-core/src/lib.rs`
+- Test: `crates/knowledge-core/tests/embed_provider.rs` (create)
+
+- [ ] **Step 1: Write failing provider contract test**
+```rust
+#[test]
+fn provider_none_returns_disabled_error() {
+    let provider = knowledge_core::embed::provider::provider_none();
+    let err = provider.embed_texts(&["hello".to_string()]).unwrap_err();
+    assert!(err.to_string().contains("disabled"));
+}
+```
+
+- [ ] **Step 2: Run test to confirm failure**
+Run: `cargo test -p knowledge-core embed_provider -v`
+Expected: FAIL until provider interfaces are implemented.
+
+- [ ] **Step 3: Implement trait + typed config selection**
+```rust
+pub trait EmbeddingProvider: Send + Sync {
+    fn embed_texts(&self, input: &[String]) -> Result<Vec<Vec<f32>>, EmbedError>;
+}
+```
+
+- [ ] **Step 4: Run tests**
+Run: `cargo test -p knowledge-core embed_provider config_resolution -v`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+```bash
+git add crates/knowledge-core/src/embed crates/knowledge-core/src/config.rs crates/knowledge-core/src/lib.rs crates/knowledge-core/tests/embed_provider.rs
+git commit -m "feat: add replaceable embedding provider abstraction in core"
+```
+
+### Task 10: Add SQLite vector storage and deterministic semantic candidate API
+
+**Files:**
+- Modify: `crates/knowledge-core/src/schema.rs`
+- Create: `crates/knowledge-core/src/vector_store.rs`
+- Modify: `crates/knowledge-core/src/store.rs`
+- Modify: `crates/knowledge-core/src/lib.rs`
+- Test: `crates/knowledge-core/tests/vector_store.rs` (create)
+- Test: `crates/knowledge-core/tests/schema_migrate_verify.rs`
+
+- [ ] **Step 1: Write failing vector schema migration test**
+```rust
+#[test]
+fn migration_creates_embeddings_table() {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    knowledge_core::schema::bootstrap(&conn).unwrap();
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='entity_embeddings'",
+        [],
+        |r| r.get(0),
+    ).unwrap();
+    assert_eq!(count, 1);
+}
+```
+
+- [ ] **Step 2: Run tests to confirm failure**
+Run: `cargo test -p knowledge-core vector_store schema_migrate_verify -v`
+Expected: FAIL until schema/store are added.
+
+- [ ] **Step 3: Implement vector table + idempotent upsert/query API**
+```rust
+pub fn upsert_embedding(
+    conn: &rusqlite::Connection,
+    entity_id: i64,
+    provider_fingerprint: &str,
+    embedding: &[f32],
+) -> anyhow::Result<()>;
+```
+
+- [ ] **Step 4: Run tests**
+Run: `cargo test -p knowledge-core vector_store schema_migrate_verify -v`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+```bash
+git add crates/knowledge-core/src/schema.rs crates/knowledge-core/src/vector_store.rs crates/knowledge-core/src/store.rs crates/knowledge-core/src/lib.rs crates/knowledge-core/tests/vector_store.rs crates/knowledge-core/tests/schema_migrate_verify.rs
+git commit -m "feat: add sqlite vector storage and semantic candidate primitives"
+```
+
+### Task 11: Add CLI embedding lifecycle commands and hybrid retrieval path
+
+**Files:**
+- Modify: `crates/knowledge-cli/src/main.rs`
+- Modify: `crates/knowledge-core/src/recall.rs`
+- Modify: `crates/knowledge-core/src/store.rs`
+- Test: `crates/knowledge-cli/tests/embed_cli.rs` (create)
+- Test: `crates/knowledge-cli/tests/eval_cli.rs`
+- Test: `crates/knowledge-core/tests/recall_ranking.rs`
+
+- [ ] **Step 1: Write failing CLI contract test for embed command**
+```rust
+#[test]
+fn embed_status_reports_disabled_by_default() {
+    let mut cmd = assert_cmd::Command::cargo_bin("knowledge-cli").unwrap();
+    cmd.args(["embed-status"]).assert().success().stdout(predicates::str::contains("disabled"));
+}
+```
+
+- [ ] **Step 2: Run tests to confirm failure**
+Run: `cargo test -p knowledge-cli embed_cli eval_cli -v`
+Expected: FAIL until commands and output contracts are implemented.
+
+- [ ] **Step 3: Implement commands and hybrid mode**
+```rust
+enum Command {
+    EmbedIndex { /* ... */ },
+    EmbedStatus { /* ... */ },
+    EmbedClear { /* ... */ },
+    Recall { /* existing + hybrid flags */ },
+}
+```
+
+- [ ] **Step 4: Run tests**
+Run: `cargo test -p knowledge-cli embed_cli eval_cli -v && cargo test -p knowledge-core recall_ranking -v`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+```bash
+git add crates/knowledge-cli/src/main.rs crates/knowledge-core/src/recall.rs crates/knowledge-core/src/store.rs crates/knowledge-cli/tests/embed_cli.rs crates/knowledge-cli/tests/eval_cli.rs crates/knowledge-core/tests/recall_ranking.rs
+git commit -m "feat: add cli embedding lifecycle commands and hybrid retrieval"
+```
+
+### Task 12: Add daemon parity for embeddings and hybrid retrieval (optional mode)
+
+**Files:**
+- Modify: `crates/knowledge-daemon/src/http.rs`
+- Modify: `crates/knowledge-daemon/src/main.rs`
+- Modify: `crates/knowledge-cli/src/main.rs`
+- Test: `crates/knowledge-daemon/tests/endpoints.rs`
+- Test: `crates/knowledge-cli/tests/daemon_parity.rs`
+
+- [ ] **Step 1: Write failing parity test for semantic provenance fields**
+```rust
+#[test]
+fn daemon_and_local_recall_have_matching_provenance_shape() {
+    // arrange same fixture/config, compare JSON shape for provenance fields
+    // local result == daemon result (allowing transport metadata differences)
+}
+```
+
+- [ ] **Step 2: Run tests to confirm failure**
+Run: `cargo test -p knowledge-daemon endpoints -v && cargo test -p knowledge-cli daemon_parity -v`
+Expected: FAIL until endpoints/parity paths are implemented.
+
+- [ ] **Step 3: Implement daemon endpoints and CLI parity wiring**
+```rust
+Router::new()
+  .route("/embed/status", get(embed_status))
+  .route("/embed/index", post(embed_index))
+  .route("/recall", post(recall))
+```
+
+- [ ] **Step 4: Run tests**
+Run: `cargo test -p knowledge-daemon endpoints -v && cargo test -p knowledge-cli daemon_parity -v`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+```bash
+git add crates/knowledge-daemon/src/http.rs crates/knowledge-daemon/src/main.rs crates/knowledge-cli/src/main.rs crates/knowledge-daemon/tests/endpoints.rs crates/knowledge-cli/tests/daemon_parity.rs
+git commit -m "feat: add embedding and hybrid retrieval parity for daemon mode"
 ```
 
 ## Final Verification Gate
