@@ -356,5 +356,5 @@ fn version_prints_semver() {
         .args(["version"])
         .assert()
         .success()
-        .stdout(contains("0.1.0"));
+        .stdout(contains("0.2.0"));
 }
