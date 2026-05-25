@@ -33,8 +33,10 @@ Use:
 
 - `knowledge-cli quickstart`
 - `knowledge-cli init --source-file config/knowledge/sources.example.json`
-- `knowledge-cli init --source-json '{"entities":[{"canonical_name":"MyCompanyName.Ebay.Custom.Client","kind":"library","namespace":"MyCompanyName.Ebay.Custom.Client"}]}'`
+- `knowledge-cli init --source-json '{"$schema":"https://aitoolbox/schemas/entity.v1.json","entities":[{"canonical_name":"mycompanyname-ebay-custom-client","kind":"library","summary":null,"namespace":"MyCompanyName.Ebay.Custom.Client","package_name":"MyCompanyName.Ebay.Custom.Client","repo_name":"Custom.Client","aliases":["MyCompanyName.Ebay.Custom.Client"],"location":null,"notes":[]}]}'`
 - `knowledge-cli get MyCompanyName.Ebay.Custom.Client`
+- `knowledge-cli get mycompanyname-ebay-custom-client`
+- `knowledge-cli list --grep custom --limit 20`
 - `knowledge-cli capture-lesson --slug avoid-global-singleton --body "Global state leaked between tests"`
 - `knowledge-cli capture-issue --slug stale-mapping-refresh --body "Need automatic refresh for stale repository paths"`
 - `knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli`
