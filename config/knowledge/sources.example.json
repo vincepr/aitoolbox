@@ -1,4 +1,7 @@
 {
+  "namespace_prefix_mappings": {
+    "laika": "Relaxdays.Laika"
+  },
   "entities": [
     {
       "canonical_name": "marketplaces",

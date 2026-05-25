@@ -10,6 +10,9 @@ use crate::model::EntityKind;
 /// Top-level JSON source document used for batch import.
 #[derive(Debug, Deserialize)]
 pub struct SourceFile {
+    /// Mapping from canonical-name prefix to namespace prefix, e.g. `laika -> Relaxdays.Laika`.
+    #[serde(default)]
+    pub namespace_prefix_mappings: std::collections::BTreeMap<String, String>,
     /// Imported entities to upsert into the store.
     pub entities: Vec<SourceEntity>,
 }
@@ -49,7 +52,7 @@ pub fn apply_source_json(conn: &Connection, json: &str, source_label: &str) -> R
         .collect::<Result<Vec<_>>>()?;
 
     let tx = conn.unchecked_transaction()?;
-    apply_validated_source(&tx, entities)?;
+    apply_validated_source(&tx, entities, &source.namespace_prefix_mappings)?;
     record_mutation_event(
         &tx,
         &MutationEvent {
@@ -99,17 +102,39 @@ impl TryFrom<SourceEntity> for ValidatedSourceEntity {
     }
 }
 
-fn apply_validated_source(conn: &Connection, entities: Vec<ValidatedSourceEntity>) -> Result<()> {
+fn apply_validated_source(
+    conn: &Connection,
+    entities: Vec<ValidatedSourceEntity>,
+    namespace_prefix_mappings: &std::collections::BTreeMap<String, String>,
+) -> Result<()> {
     for entity in entities {
-        upsert_entity_row(conn, &entity)?;
+        let aliases = upsert_entity_row(conn, &entity, namespace_prefix_mappings)?;
         let id = fetch_entity_id(conn, &entity.canonical_name)?;
         upsert_location_row(conn, id, &entity)?;
+        upsert_alias_rows(conn, id, aliases)?;
     }
 
     Ok(())
 }
 
-fn upsert_entity_row(conn: &Connection, entity: &ValidatedSourceEntity) -> Result<()> {
+fn upsert_entity_row(
+    conn: &Connection,
+    entity: &ValidatedSourceEntity,
+    namespace_prefix_mappings: &std::collections::BTreeMap<String, String>,
+) -> Result<Vec<String>> {
+    let (derived_namespace, derived_package_name, aliases) =
+        derive_fields_and_aliases(entity, namespace_prefix_mappings);
+    let namespace = entity
+        .namespace
+        .as_ref()
+        .or(derived_namespace.as_ref())
+        .map(String::as_str);
+    let package_name = entity
+        .package_name
+        .as_ref()
+        .or(derived_package_name.as_ref())
+        .map(String::as_str);
+
     conn.execute(
         "
         INSERT INTO entities (canonical_name, kind, summary, namespace, package_name, repo_name)
@@ -124,12 +149,12 @@ fn upsert_entity_row(conn: &Connection, entity: &ValidatedSourceEntity) -> Resul
         params![
             entity.canonical_name,
             entity.kind.as_str(),
-            entity.namespace,
-            entity.package_name,
+            namespace,
+            package_name,
             entity.repo_name,
         ],
     )?;
-    Ok(())
+    Ok(aliases)
 }
 
 fn fetch_entity_id(conn: &Connection, canonical_name: &str) -> Result<i64> {
@@ -157,6 +182,71 @@ fn upsert_location_row(
         params![entity_id, entity.local_path, entity.git_url],
     )?;
     Ok(())
+}
+
+fn upsert_alias_rows(conn: &Connection, entity_id: i64, aliases: Vec<String>) -> Result<()> {
+    for alias in aliases {
+        conn.execute(
+            "INSERT OR IGNORE INTO aliases (entity_id, alias) VALUES (?1, ?2)",
+            params![entity_id, alias.to_ascii_lowercase()],
+        )?;
+    }
+    Ok(())
+}
+
+fn derive_fields_and_aliases(
+    entity: &ValidatedSourceEntity,
+    namespace_prefix_mappings: &std::collections::BTreeMap<String, String>,
+) -> (Option<String>, Option<String>, Vec<String>) {
+    let segments = entity.canonical_name.split('-').collect::<Vec<_>>();
+    if segments.len() < 2 {
+        return (None, None, Vec::new());
+    }
+
+    let Some(namespace_prefix) = namespace_prefix_mappings.get(segments[0]) else {
+        return (None, None, Vec::new());
+    };
+
+    let mut namespace_tail = segments[1..]
+        .iter()
+        .map(|segment| title_case_segment(segment))
+        .collect::<Vec<_>>();
+    if let Some(repo_name) = entity.repo_name.as_ref() {
+        if let Some(last) = namespace_tail.last_mut() {
+            *last = repo_name.clone();
+        }
+    }
+    let namespace = format!("{namespace_prefix}.{}", namespace_tail.join("."));
+    let package_name = Some(namespace.clone());
+    let path_alias = format!("{}/{}", segments[0], namespace_tail.join("/"));
+    let namespace_without_org = namespace
+        .split_once('.')
+        .map(|(_, tail)| tail.to_string())
+        .unwrap_or_else(|| namespace.clone());
+    let repo_alias = entity
+        .repo_name
+        .clone()
+        .unwrap_or_else(|| namespace_tail.last().cloned().unwrap_or_default());
+
+    let mut aliases = vec![namespace.clone(), path_alias, namespace_without_org];
+    if !repo_alias.is_empty() {
+        aliases.push(repo_alias);
+    }
+    aliases.sort_unstable();
+    aliases.dedup();
+
+    (Some(namespace), package_name, aliases)
+}
+
+fn title_case_segment(segment: &str) -> String {
+    let mut chars = segment.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut output = String::with_capacity(segment.len());
+    output.push(first.to_ascii_uppercase());
+    output.extend(chars.map(|ch| ch.to_ascii_lowercase()));
+    output
 }
 
 fn parse_entity_kind(kind: &str) -> Result<EntityKind> {
