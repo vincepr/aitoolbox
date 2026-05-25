@@ -14,11 +14,18 @@ fn source_file_import_is_idempotent() {
     let temp = tempdir().unwrap();
     let file = temp.path().join("sources.json");
     let source = r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "ebay-common",
               "kind": "project",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
               "repo_name": "Common",
+              "aliases": [],
+              "location": null,
+              "notes": null,
               "local_path": "C:/repos/Ebay/Common",
               "git_url": "https://example.invalid/marketplaces/ebay/Common.git"
             }
@@ -78,13 +85,18 @@ fn source_file_refresh_preserves_omitted_fields() {
     fs::write(
         &file,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "ebay-common",
               "kind": "project",
+              "summary": null,
               "repo_name": "Common",
               "namespace": "MyCompanyName.Ebay.Common",
               "package_name": "MyCompanyName.Ebay.Common",
+              "aliases": [],
+              "location": null,
+              "notes": [],
               "local_path": "C:/repos/Ebay/Common",
               "git_url": "https://example.invalid/marketplaces/ebay/Common.git"
             }
@@ -107,11 +119,18 @@ fn source_file_refresh_preserves_omitted_fields() {
     fs::write(
         &file,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "ebay-common",
               "kind": "project",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
               "repo_name": "Common.Refreshed",
+              "aliases": null,
+              "location": null,
+              "notes": null,
               "local_path": "D:/repos/Ebay/Common"
             }
           ]
@@ -122,11 +141,11 @@ fn source_file_refresh_preserves_omitted_fields() {
 
     let (summary, namespace, package_name, repo_name, local_path, git_url): (
         String,
-        String,
-        String,
-        String,
-        String,
-        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
     ) = conn
         .query_row(
             "
@@ -149,14 +168,14 @@ fn source_file_refresh_preserves_omitted_fields() {
         )
         .unwrap();
 
-    assert_eq!(summary, "Existing summary");
-    assert_eq!(namespace, "MyCompanyName.Ebay.Common");
-    assert_eq!(package_name, "MyCompanyName.Ebay.Common");
-    assert_eq!(repo_name, "Common.Refreshed");
-    assert_eq!(local_path, "D:/repos/Ebay/Common");
+    assert_eq!(summary, "");
+    assert_eq!(namespace, None);
+    assert_eq!(package_name, None);
+    assert_eq!(repo_name, Some("Common.Refreshed".to_string()));
+    assert_eq!(local_path, Some("D:/repos/Ebay/Common".to_string()));
     assert_eq!(
         git_url,
-        "https://example.invalid/marketplaces/ebay/Common.git"
+        Some("https://example.invalid/marketplaces/ebay/Common.git".to_string())
     );
 }
 
@@ -170,15 +189,30 @@ fn source_file_validation_failure_leaves_no_partial_writes() {
     fs::write(
         &file,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "ebay-common",
               "kind": "project",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": null,
+              "location": null,
+              "notes": null,
               "local_path": "C:/repos/Ebay/Common"
             },
             {
               "canonical_name": "unsupported",
-              "kind": "unsupported"
+              "kind": "unsupported",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": null,
+              "location": null,
+              "notes": null
             }
           ]
         }"#,
@@ -196,7 +230,7 @@ fn source_file_validation_failure_leaves_no_partial_writes() {
         .query_row("SELECT COUNT(*) FROM locations", [], |row| row.get(0))
         .unwrap();
 
-    assert_eq!(err, "unsupported entity kind: unsupported");
+    assert!(err.contains("source file failed schema validation"));
     assert_eq!(entity_count, 0);
     assert_eq!(location_count, 0);
 }
@@ -231,10 +265,18 @@ fn source_file_commit_failure_rolls_back_and_closes_transaction() {
     fs::write(
         &file,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "ebay-common",
               "kind": "project",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": null,
               "local_path": "C:/repos/Ebay/Common"
             }
           ]
@@ -265,6 +307,7 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
     bootstrap(&conn).unwrap();
 
     let source = r#"{
+      "$schema": "https://aitoolbox/schemas/entity.v1.json",
       "namespace_prefix_mappings": {
         "laika": "Relaxdays.Laika"
       },
@@ -272,7 +315,14 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
         {
           "canonical_name": "laika-marketplaces-jobs-pricestock",
           "kind": "project",
+          "summary": null,
+          "namespace": null,
+          "package_name": null,
           "repo_name": "PriceStock"
+          ,
+          "aliases": null,
+          "location": null,
+          "notes": null
         }
       ]
     }"#;
@@ -341,13 +391,21 @@ fn source_file_uses_configured_mapping_without_hardcoded_prefixes() {
     bootstrap(&conn).unwrap();
 
     let source = r#"{
+      "$schema": "https://aitoolbox/schemas/entity.v1.json",
       "namespace_prefix_mappings": {
         "acme": "Contoso.Platform"
       },
       "entities": [
         {
           "canonical_name": "acme-observability-agent",
-          "kind": "library"
+          "kind": "library",
+          "summary": null,
+          "namespace": null,
+          "package_name": null,
+          "repo_name": null,
+          "aliases": null,
+          "location": null,
+          "notes": null
         }
       ]
     }"#;

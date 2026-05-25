@@ -19,17 +19,22 @@ Use this skill to initialize or refresh local knowledge mappings safely and dete
 1. Verify CLI availability:
    - `knowledge-cli version`
    - If missing: return `blocked` with install command.
-2. Run migration gate:
+2. Print and review input schemas before authoring any payloads:
+   - `knowledge-cli init --print-schema`
+   - `knowledge-cli capture-lesson --print-schema`
+   - `knowledge-cli capture-issue --print-schema`
+   - `knowledge-cli pipeline-enqueue --print-schema`
+3. Run migration gate:
    - `bash scripts/migrate-knowledge-db.sh`
    - If migration is required and fails: return `blocked` with exact failure reason.
-3. Assert config authority and startup validity:
+4. Assert config authority and startup validity:
    - run `knowledge-cli quickstart [overrides...]`
    - respect typed config precedence (CLI overrides > env/config > defaults).
-4. Upsert mappings from source:
+5. Upsert mappings from source:
    - `knowledge-cli init --source-file <path> [--db ...]`
-5. Detect stale/missing mappings from current workspace hints.
-6. Apply only low-risk local corrections.
-7. Record unresolved uncertainty as issue/lesson:
+6. Detect stale/missing mappings from current workspace hints.
+7. Apply only low-risk local corrections.
+8. Record unresolved uncertainty as issue/lesson:
    - `knowledge-cli capture-issue ...`
    - `knowledge-cli capture-lesson ...`
 

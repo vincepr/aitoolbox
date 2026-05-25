@@ -139,6 +139,18 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX IF NOT EXISTS idx_ingestion_results_job_id ON ingestion_results(job_id);
         "#,
     },
+    Migration {
+        version: 3,
+        name: "explicit_null_collection_state",
+        sql: r#"
+        ALTER TABLE entities ADD COLUMN aliases_state TEXT NOT NULL DEFAULT 'unknown'
+            CHECK (aliases_state IN ('unknown', 'known'));
+        ALTER TABLE entities ADD COLUMN notes_state TEXT NOT NULL DEFAULT 'unknown'
+            CHECK (notes_state IN ('unknown', 'known'));
+        CREATE INDEX IF NOT EXISTS idx_entities_aliases_state ON entities(aliases_state);
+        CREATE INDEX IF NOT EXISTS idx_entities_notes_state ON entities(notes_state);
+        "#,
+    },
 ];
 
 /// Returns the latest supported schema version.

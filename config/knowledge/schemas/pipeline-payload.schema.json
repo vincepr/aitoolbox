@@ -1,0 +1,14 @@
+{
+    "$id": "https://aitoolbox/schemas/pipeline-payload.v1.json",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["$schema", "payload"],
+    "properties": {
+        "$schema": {"const": "https://aitoolbox/schemas/pipeline-payload.v1.json"},
+        "payload": {"type": "string", "minLength": 1},
+        "metadata": {
+            "type": ["object", "null"],
+            "additionalProperties": {"type": ["string", "number", "boolean", "null"]}
+        }
+    }
+}
