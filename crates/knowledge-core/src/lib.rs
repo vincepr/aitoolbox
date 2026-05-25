@@ -6,6 +6,8 @@ pub mod capture;
 pub mod config;
 /// Source import APIs for loading entities from JSON.
 pub mod import;
+/// Raw-first background ingestion primitives and provider hooks.
+pub mod ingest;
 /// Ordered schema migration definitions.
 pub mod migrations;
 /// Core domain enums for entities and relationships.

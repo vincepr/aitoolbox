@@ -22,3 +22,12 @@ fn invalid_top_k_is_rejected() {
     let err = resolve_for_test(file_cfg, None, None).unwrap_err();
     assert!(err.to_string().contains("recall.top_k"));
 }
+
+#[test]
+fn pipeline_defaults_are_disabled_and_typed() {
+    let file_cfg = r#"{"recall":{"top_k":5}}"#;
+    let effective = resolve_for_test(file_cfg, None, None).unwrap();
+    assert!(!effective.pipeline.enabled);
+    assert_eq!(effective.pipeline.max_attempts, 3);
+    assert_eq!(effective.pipeline.provider.kind, "disabled");
+}

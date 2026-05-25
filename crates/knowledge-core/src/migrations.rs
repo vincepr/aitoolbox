@@ -12,10 +12,11 @@ pub struct Migration {
     pub sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "baseline",
-    sql: r#"
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "baseline",
+        sql: r#"
         PRAGMA foreign_keys = ON;
 
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -96,7 +97,49 @@ const MIGRATIONS: &[Migration] = &[Migration {
         CREATE INDEX IF NOT EXISTS idx_mutation_events_created_at ON mutation_events(created_at);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_mutation_events_idempotency_key ON mutation_events(idempotency_key) WHERE idempotency_key IS NOT NULL;
     "#,
-}];
+    },
+    Migration {
+        version: 2,
+        name: "ingestion_pipeline",
+        sql: r#"
+        CREATE TABLE IF NOT EXISTS ingestion_jobs (
+            id INTEGER PRIMARY KEY,
+            dedupe_key TEXT NOT NULL UNIQUE,
+            raw_payload TEXT NOT NULL,
+            state TEXT NOT NULL CHECK (state IN ('queued', 'processing', 'succeeded', 'failed')),
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            last_error TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS ingestion_results (
+            id INTEGER PRIMARY KEY,
+            job_id INTEGER NOT NULL,
+            phase TEXT NOT NULL CHECK (phase IN ('parse', 'normalize', 'classify', 'persist')),
+            state TEXT NOT NULL CHECK (state IN ('queued', 'processing', 'succeeded', 'failed')),
+            error TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(job_id) REFERENCES ingestion_jobs(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS ingestion_domain_writes (
+            id INTEGER PRIMARY KEY,
+            job_id INTEGER NOT NULL,
+            entity_canonical_name TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(job_id, entity_canonical_name),
+            FOREIGN KEY(job_id) REFERENCES ingestion_jobs(id) ON DELETE CASCADE,
+            FOREIGN KEY(entity_canonical_name) REFERENCES entities(canonical_name) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_state ON ingestion_jobs(state);
+        CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_dedupe_key ON ingestion_jobs(dedupe_key);
+        CREATE INDEX IF NOT EXISTS idx_ingestion_results_job_id ON ingestion_results(job_id);
+        "#,
+    },
+];
 
 /// Returns the latest supported schema version.
 pub fn latest_migration_version() -> i64 {
