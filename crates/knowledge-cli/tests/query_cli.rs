@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::str::contains;
+use rusqlite::{params, Connection};
 use std::fs;
 use tempfile::tempdir;
 
@@ -229,6 +230,175 @@ fn get_command_reports_no_match_as_informational_success() {
         .assert()
         .success()
         .stdout(contains("No exact entity match found for missing.entity"));
+}
+
+#[test]
+fn list_supports_grep_hit_and_miss() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("nested").join("knowledge.db");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "entities": [
+            {
+              "canonical_name": "MyCompanyName.Ebay.Custom.Client",
+              "kind": "library",
+              "namespace": "MyCompanyName.Ebay.Custom.Client",
+              "repo_name": "CustomRepo"
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args(["list", "--db", db.to_str().unwrap(), "--grep", "custom"])
+        .assert()
+        .success()
+        .stdout(contains(
+            "MyCompanyName.Ebay.Custom.Client\tlibrary\tCustomRepo",
+        ));
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "list",
+            "--db",
+            db.to_str().unwrap(),
+            "--grep",
+            "does-not-exist",
+        ])
+        .assert()
+        .success()
+        .stdout("");
+}
+
+#[test]
+fn list_filters_by_kind_and_applies_limit() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("nested").join("knowledge.db");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "entities": [
+            {"canonical_name": "Alpha.Core", "kind": "library", "repo_name": "alpha"},
+            {"canonical_name": "Beta.Core", "kind": "library", "repo_name": "beta"},
+            {"canonical_name": "Ops.Service", "kind": "project", "repo_name": "ops"}
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let library_output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args(["list", "--db", db.to_str().unwrap(), "--kind", "library"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let library_output = String::from_utf8(library_output).unwrap();
+    assert!(library_output.contains("Alpha.Core\tlibrary\talpha"));
+    assert!(library_output.contains("Beta.Core\tlibrary\tbeta"));
+    assert!(!library_output.contains("Ops.Service"));
+
+    let limited_output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "list",
+            "--db",
+            db.to_str().unwrap(),
+            "--kind",
+            "library",
+            "--limit",
+            "1",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let limited_output = String::from_utf8(limited_output).unwrap();
+    assert_eq!(limited_output.lines().count(), 1);
+}
+
+#[test]
+fn list_matches_aliases() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("nested").join("knowledge.db");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "entities": [
+            {"canonical_name": "MyCompanyName.Ebay.Custom.Client", "kind": "library"}
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let conn = Connection::open(&db).unwrap();
+    let entity_id = conn
+        .query_row(
+            "SELECT id FROM entities WHERE canonical_name = ?1",
+            ["MyCompanyName.Ebay.Custom.Client"],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap();
+    conn.execute(
+        "INSERT INTO aliases (entity_id, alias) VALUES (?1, ?2)",
+        params![entity_id, "PriceStock"],
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args(["list", "--db", db.to_str().unwrap(), "--grep", "pricestock"])
+        .assert()
+        .success()
+        .stdout(contains("MyCompanyName.Ebay.Custom.Client\tlibrary\t"));
 }
 
 #[test]

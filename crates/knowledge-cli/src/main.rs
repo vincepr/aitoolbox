@@ -102,6 +102,20 @@ enum Command {
         )]
         input_json: Option<String>,
     },
+    #[command(about = "List entities for discovery when canonical names are unknown")]
+    List {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(
+            long,
+            help = "Case-insensitive substring filter across canonical name, namespace, package, repo, and aliases"
+        )]
+        grep: Option<String>,
+        #[arg(long, help = "Filter to one entity kind")]
+        kind: Option<ListKind>,
+        #[arg(long, default_value_t = 20, help = "Maximum number of rows to print")]
+        limit: u32,
+    },
     #[command(about = "Capture a reusable lesson note and register it in the knowledge store")]
     CaptureLesson {
         #[arg(long, help = "Path to the SQLite knowledge database")]
@@ -229,6 +243,27 @@ enum AliasShell {
     Zsh,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum ListKind {
+    Domain,
+    System,
+    Library,
+    Project,
+    Lesson,
+}
+
+impl ListKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            ListKind::Domain => "domain",
+            ListKind::System => "system",
+            ListKind::Library => "library",
+            ListKind::Project => "project",
+            ListKind::Lesson => "lesson",
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct GetPayload {
     entity: String,
@@ -294,6 +329,12 @@ fn run(cli: Cli) -> Result<()> {
             input_file,
             input_json,
         ),
+        Command::List {
+            db,
+            grep,
+            kind,
+            limit,
+        } => handle_list(resolve_db_path(db)?, grep, kind, limit),
         Command::CaptureLesson {
             db,
             notes_root,
@@ -542,6 +583,26 @@ fn handle_get(
     let notes = NoteStore::new(notes_root);
     let answer = store.query_exact(&entity_name, &notes)?;
     print_get_result(&entity_name, answer);
+
+    Ok(())
+}
+
+fn handle_list(
+    db: Utf8PathBuf,
+    grep: Option<String>,
+    kind: Option<ListKind>,
+    limit: u32,
+) -> Result<()> {
+    let conn = open_bootstrapped_db(&db)?;
+    let store = KnowledgeStore::new(&conn);
+    let records = store.list(grep.as_deref(), kind.map(ListKind::as_str), limit)?;
+
+    for record in records {
+        println!(
+            "{}\t{}\t{}",
+            record.canonical_name, record.kind, record.repo_name
+        );
+    }
 
     Ok(())
 }
