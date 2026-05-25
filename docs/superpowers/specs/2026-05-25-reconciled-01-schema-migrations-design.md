@@ -1,4 +1,5 @@
 # Reconciled 01: Schema Migrations and Version Gate Design
+**DONE:** `2026-05-25-reconciled-01-schema-migrations-design.md`
 
 **Goal:** Introduce a versioned, transactional migration system and strict startup compatibility checks.
 

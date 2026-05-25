@@ -1,4 +1,5 @@
 # Reconciled 06: Background Ingestion Pipeline Design
+**DONE:** `2026-05-25-reconciled-06-ingestion-pipeline-design.md`
 
 **Goal:** Introduce raw-first asynchronous ingestion with safe retry/dedupe semantics.
 

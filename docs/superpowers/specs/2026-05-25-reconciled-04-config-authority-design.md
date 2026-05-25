@@ -1,4 +1,5 @@
 # Reconciled 04: Config Authority and Guardrails Design
+**DONE:** `2026-05-25-reconciled-04-config-authority-design.md`
 
 **Goal:** Establish deterministic typed configuration with future daemon-safe authority boundaries.
 

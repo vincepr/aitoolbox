@@ -297,29 +297,29 @@ git commit -m "feat: add raw-first ingestion pipeline with retry safety"
 - Create: `scripts/audit-docs.sh`
 - Test: `tests/audit_docs.bats` (create) or shell assertion script
 
-- [ ] **Step 1: Write failing script test for first-audit/skip/re-audit states**
+- [x] **Step 1: Write failing script test for first-audit/skip/re-audit states**
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 ./scripts/audit-docs.sh --mode test-first | grep -q "first audit"
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 Run: `bash tests/audit_docs.sh`
 Expected: FAIL until script exists.
 
-- [ ] **Step 3: Implement script + policy doc**
+- [x] **Step 3: Implement script + policy doc**
 ```bash
 if [[ ! -f docs/.audit-state.json ]]; then
   echo "first audit"
 fi
 ```
 
-- [ ] **Step 4: Run test**
+- [x] **Step 4: Run test**
 Run: `bash tests/audit_docs.sh`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add docs/audit-workflow.md docs/.audit-state.json scripts/audit-docs.sh tests/audit_docs.sh
 git commit -m "docs: add docs-to-code audit workflow and drift checks"

@@ -1,4 +1,5 @@
 # Reconciled 07: Docs-to-Code Audit Workflow Design
+**DONE:** `2026-05-25-reconciled-07-docs-code-audit-design.md`
 
 **Goal:** Add a lightweight repeatable process to keep docs and todos aligned with behavior.
 
