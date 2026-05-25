@@ -14,11 +14,18 @@ fn get_command_returns_summary_and_missing_mapping_message() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "MyCompanyName.Ebay.Custom.Client",
               "kind": "library",
-              "namespace": "MyCompanyName.Ebay.Custom.Client"
+              "summary": null,
+              "namespace": "MyCompanyName.Ebay.Custom.Client",
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": []
             }
           ]
         }"#,
@@ -65,11 +72,18 @@ fn get_accepts_positional_entity_with_default_paths() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "MyCompanyName.Ebay.Custom.Client",
               "kind": "library",
-              "namespace": "MyCompanyName.Ebay.Custom.Client"
+              "summary": null,
+              "namespace": "MyCompanyName.Ebay.Custom.Client",
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": []
             }
           ]
         }"#,
@@ -134,11 +148,18 @@ fn init_reads_source_json_from_source_json_flag() {
     let db = temp.path().join("nested").join("knowledge.db");
     let notes = temp.path().join("notes");
     let source_json = r#"{
+      "$schema": "https://aitoolbox/schemas/entity.v1.json",
       "entities": [
         {
           "canonical_name": "MyCompanyName.Ebay.Custom.Client",
           "kind": "library",
-          "namespace": "MyCompanyName.Ebay.Custom.Client"
+          "summary": null,
+          "namespace": "MyCompanyName.Ebay.Custom.Client",
+          "package_name": null,
+          "repo_name": null,
+          "aliases": [],
+          "location": null,
+          "notes": []
         }
       ]
     }"#;
@@ -177,7 +198,11 @@ fn init_rejects_both_source_file_and_source_json() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");
     let source = temp.path().join("sources.json");
-    fs::write(&source, r#"{"entities":[]}"#).unwrap();
+    fs::write(
+        &source,
+        r#"{"$schema":"https://aitoolbox/schemas/entity.v1.json","entities":[]}"#,
+    )
+    .unwrap();
 
     Command::cargo_bin("knowledge-cli")
         .unwrap()
@@ -188,7 +213,7 @@ fn init_rejects_both_source_file_and_source_json() {
             "--source-file",
             source.to_str().unwrap(),
             "--source-json",
-            r#"{"entities":[]}"#,
+            r#"{"$schema":"https://aitoolbox/schemas/entity.v1.json","entities":[]}"#,
         ])
         .assert()
         .failure()
@@ -202,7 +227,11 @@ fn get_command_reports_no_match_as_informational_success() {
     let source = temp.path().join("sources.json");
     let notes = temp.path().join("notes");
 
-    fs::write(&source, r#"{"entities":[]}"#).unwrap();
+    fs::write(
+        &source,
+        r#"{"$schema":"https://aitoolbox/schemas/entity.v1.json","entities":[]}"#,
+    )
+    .unwrap();
 
     Command::cargo_bin("knowledge-cli")
         .unwrap()
@@ -585,7 +614,7 @@ fn init_source_json_parse_errors_include_flag_context() {
         ])
         .assert()
         .failure()
-        .stderr(contains("failed to parse source file: --source-json"));
+        .stderr(contains("failed to parse input JSON payload"));
 }
 
 #[test]
@@ -595,7 +624,11 @@ fn get_input_json_parse_errors_include_command_context() {
     let source = temp.path().join("sources.json");
     let notes = temp.path().join("notes");
 
-    fs::write(&source, r#"{"entities":[]}"#).unwrap();
+    fs::write(
+        &source,
+        r#"{"$schema":"https://aitoolbox/schemas/entity.v1.json","entities":[]}"#,
+    )
+    .unwrap();
 
     Command::cargo_bin("knowledge-cli")
         .unwrap()

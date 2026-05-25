@@ -5,11 +5,15 @@ use serde::Deserialize;
 use std::hash::{Hash, Hasher};
 
 use crate::audit::{has_idempotency_key, record_mutation_event, MutationEvent};
+use crate::input_schema::{validate_payload, InputSchemaKind};
 use crate::model::EntityKind;
 
 /// Top-level JSON source document used for batch import.
 #[derive(Debug, Deserialize)]
 pub struct SourceFile {
+    /// Input schema URI for versioned validation.
+    #[serde(rename = "$schema")]
+    pub schema: String,
     /// Imported entities to upsert into the store.
     pub entities: Vec<SourceEntity>,
 }
@@ -27,6 +31,25 @@ pub struct SourceEntity {
     pub namespace: Option<String>,
     /// Optional package-name alias for lookup.
     pub package_name: Option<String>,
+    /// Optional short summary for exact lookup responses.
+    pub summary: Option<String>,
+    /// Optional aliases; `null` means unknown and `[]` means known empty.
+    pub aliases: Option<Vec<String>>,
+    /// Optional notes; `null` means unknown and `[]` means known empty.
+    pub notes: Option<Vec<String>>,
+    /// Optional nested location object.
+    pub location: Option<SourceLocation>,
+    /// Optional local filesystem location.
+    #[serde(default)]
+    pub local_path: Option<String>,
+    /// Optional remote Git URL location.
+    #[serde(default)]
+    pub git_url: Option<String>,
+}
+
+/// Optional source location fields.
+#[derive(Debug, Deserialize)]
+pub struct SourceLocation {
     /// Optional local filesystem location.
     pub local_path: Option<String>,
     /// Optional remote Git URL location.
@@ -40,6 +63,8 @@ pub fn apply_source_json(conn: &Connection, json: &str, source_label: &str) -> R
         return Ok(());
     }
 
+    validate_payload(json, InputSchemaKind::Entity)
+        .with_context(|| format!("source file failed schema validation: {source_label}"))?;
     let source: SourceFile = serde_json::from_str(json)
         .with_context(|| format!("failed to parse source file: {source_label}"))?;
     let entities = source
@@ -79,6 +104,9 @@ struct ValidatedSourceEntity {
     repo_name: Option<String>,
     namespace: Option<String>,
     package_name: Option<String>,
+    summary: String,
+    aliases: Option<Vec<String>>,
+    notes: Option<Vec<String>>,
     local_path: Option<String>,
     git_url: Option<String>,
 }
@@ -90,11 +118,22 @@ impl TryFrom<SourceEntity> for ValidatedSourceEntity {
         Ok(Self {
             canonical_name: entity.canonical_name,
             kind: parse_entity_kind(&entity.kind)?,
+            summary: entity.summary.unwrap_or_default(),
             repo_name: entity.repo_name,
             namespace: entity.namespace,
             package_name: entity.package_name,
-            local_path: entity.local_path,
-            git_url: entity.git_url,
+            aliases: entity.aliases,
+            notes: entity.notes,
+            local_path: entity
+                .location
+                .as_ref()
+                .and_then(|location| location.local_path.clone())
+                .or(entity.local_path),
+            git_url: entity
+                .location
+                .as_ref()
+                .and_then(|location| location.git_url.clone())
+                .or(entity.git_url),
         })
     }
 }
@@ -104,6 +143,10 @@ fn apply_validated_source(conn: &Connection, entities: Vec<ValidatedSourceEntity
         upsert_entity_row(conn, &entity)?;
         let id = fetch_entity_id(conn, &entity.canonical_name)?;
         upsert_location_row(conn, id, &entity)?;
+        let aliases_known = entity.aliases.is_some();
+        let notes_known = entity.notes.is_some();
+        replace_aliases(conn, id, entity.aliases)?;
+        upsert_collection_states(conn, id, notes_known, aliases_known)?;
     }
 
     Ok(())
@@ -113,21 +156,58 @@ fn upsert_entity_row(conn: &Connection, entity: &ValidatedSourceEntity) -> Resul
     conn.execute(
         "
         INSERT INTO entities (canonical_name, kind, summary, namespace, package_name, repo_name)
-        VALUES (?1, ?2, '', ?3, ?4, ?5)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
         ON CONFLICT(canonical_name) DO UPDATE SET
             kind = excluded.kind,
-            namespace = COALESCE(excluded.namespace, entities.namespace),
-            package_name = COALESCE(excluded.package_name, entities.package_name),
-            repo_name = COALESCE(excluded.repo_name, entities.repo_name),
+            summary = excluded.summary,
+            namespace = excluded.namespace,
+            package_name = excluded.package_name,
+            repo_name = excluded.repo_name,
             updated_at = CURRENT_TIMESTAMP
         ",
         params![
             entity.canonical_name,
             entity.kind.as_str(),
+            entity.summary,
             entity.namespace,
             entity.package_name,
             entity.repo_name,
         ],
+    )?;
+    Ok(())
+}
+
+fn replace_aliases(conn: &Connection, entity_id: i64, aliases: Option<Vec<String>>) -> Result<()> {
+    let Some(aliases) = aliases else {
+        return Ok(());
+    };
+    conn.execute("DELETE FROM aliases WHERE entity_id = ?1", [entity_id])?;
+    for alias in aliases {
+        conn.execute(
+            "INSERT OR IGNORE INTO aliases (entity_id, alias) VALUES (?1, ?2)",
+            params![entity_id, alias],
+        )?;
+    }
+    Ok(())
+}
+
+fn upsert_collection_states(
+    conn: &Connection,
+    entity_id: i64,
+    notes_known: bool,
+    aliases_known: bool,
+) -> Result<()> {
+    let notes_state = if notes_known { "known" } else { "unknown" };
+    let aliases_state = if aliases_known { "known" } else { "unknown" };
+    conn.execute(
+        "
+        UPDATE entities
+        SET notes_state = ?1,
+            aliases_state = ?2,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?3
+        ",
+        params![notes_state, aliases_state, entity_id],
     )?;
     Ok(())
 }

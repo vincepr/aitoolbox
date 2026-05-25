@@ -8,6 +8,8 @@ pub mod config;
 pub mod import;
 /// Raw-first background ingestion primitives and provider hooks.
 pub mod ingest;
+/// Input JSON schema helpers for write paths.
+pub mod input_schema;
 /// Ordered schema migration definitions.
 pub mod migrations;
 /// Core domain enums for entities and relationships.

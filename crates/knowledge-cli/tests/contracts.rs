@@ -13,10 +13,18 @@ fn get_output_matches_contract_v1() {
     fs::write(
         &source,
         r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
               "canonical_name": "MyCompanyName.Ebay.Custom.Client",
-              "kind": "library"
+              "kind": "library",
+              "summary": null,
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": []
             }
           ]
         }"#,

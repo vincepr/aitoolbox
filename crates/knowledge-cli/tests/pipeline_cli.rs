@@ -16,7 +16,7 @@ fn pipeline_enqueue_and_status_work() {
             "--dedupe-key",
             "job-a",
             "--payload",
-            "hello",
+            "{\"$schema\":\"https://aitoolbox/schemas/pipeline-payload.v1.json\",\"payload\":\"hello\"}",
         ])
         .assert()
         .success()
@@ -27,5 +27,7 @@ fn pipeline_enqueue_and_status_work() {
         .args(["pipeline-status", "--db", &db_arg])
         .assert()
         .success()
-        .stdout(predicates::str::contains("queued=1"));
+        .stdout(predicates::str::contains("queued=1"))
+        .stdout(predicates::str::contains("unknown_aliases=0"))
+        .stdout(predicates::str::contains("unknown_notes=0"));
 }

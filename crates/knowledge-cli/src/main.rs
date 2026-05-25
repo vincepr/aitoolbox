@@ -7,6 +7,7 @@ use knowledge_core::capture::{capture_issue, capture_lesson};
 use knowledge_core::config::{resolve as resolve_config, EffectiveConfig};
 use knowledge_core::import::{apply_source_file, apply_source_json};
 use knowledge_core::ingest::{enqueue_job, queue_status, run_once, DisabledProvider};
+use knowledge_core::input_schema::{validate_payload, InputSchemaKind};
 use knowledge_core::notes::NoteStore;
 use knowledge_core::schema::{bootstrap, schema_version, verify_schema};
 use knowledge_core::store::KnowledgeStore;
@@ -22,7 +23,8 @@ const NOTES_ROOT_ENV: &str = "KNOWLEDGE_CLI_NOTES_ROOT";
 const SOURCE_FILE_ENV: &str = "KNOWLEDGE_CLI_SOURCE_FILE";
 const CONFIG_FILE_ENV: &str = "KNOWLEDGE_CLI_CONFIG_FILE";
 const RECALL_TOP_K_ENV: &str = "KNOWLEDGE_CLI_RECALL_TOP_K";
-const DEFAULT_SOURCE_JSON: &str = "{\n  \"entities\": []\n}\n";
+const DEFAULT_SOURCE_JSON: &str =
+    "{\n  \"$schema\": \"https://aitoolbox/schemas/entity.v1.json\",\n  \"entities\": []\n}\n";
 
 #[derive(Parser)]
 #[command(
@@ -58,17 +60,17 @@ enum Command {
         #[arg(
             long,
             help = "Path to a JSON source file with knowledge entities",
-            conflicts_with = "source_json",
-            required_unless_present = "source_json"
+            conflicts_with = "source_json"
         )]
         source_file: Option<Utf8PathBuf>,
         #[arg(
             long,
             help = "Escaped JSON object containing knowledge entities",
-            conflicts_with = "source_file",
-            required_unless_present = "source_file"
+            conflicts_with = "source_file"
         )]
         source_json: Option<String>,
+        #[arg(long, help = "Print expected JSON schema for init source payload")]
+        print_schema: bool,
     },
     #[command(about = "Create default local files and bootstrap the knowledge database")]
     Quickstart {
@@ -140,6 +142,11 @@ enum Command {
             conflicts_with_all = ["slug", "body"]
         )]
         input_json: Option<String>,
+        #[arg(
+            long,
+            help = "Print expected JSON schema for capture-lesson JSON payload"
+        )]
+        print_schema: bool,
     },
     #[command(
         about = "Capture a workflow or architecture issue and register it in the knowledge store"
@@ -167,6 +174,11 @@ enum Command {
             conflicts_with_all = ["slug", "body"]
         )]
         input_json: Option<String>,
+        #[arg(
+            long,
+            help = "Print expected JSON schema for capture-issue JSON payload"
+        )]
+        print_schema: bool,
     },
     #[command(about = "Generate shell completion scripts")]
     Completions {
@@ -207,10 +219,15 @@ enum Command {
         db: Option<Utf8PathBuf>,
         #[arg(long, help = "Stable dedupe key used to avoid duplicate queued jobs")]
         dedupe_key: String,
-        #[arg(long, help = "Raw payload to enqueue")]
-        payload: String,
+        #[arg(
+            long,
+            help = "Escaped JSON input: {\"$schema\":\"...\",\"payload\":\"<raw>\"}"
+        )]
+        payload: Option<String>,
         #[arg(long, help = "Override max retry attempts for this job")]
         max_attempts: Option<u32>,
+        #[arg(long, help = "Print expected JSON schema for pipeline enqueue payload")]
+        print_schema: bool,
     },
     #[command(about = "Run one queued ingestion job")]
     PipelineRunOnce {
@@ -306,7 +323,8 @@ fn run(cli: Cli) -> Result<()> {
             db,
             source_file,
             source_json,
-        } => handle_init(resolve_db_path(db)?, source_file, source_json),
+            print_schema,
+        } => handle_init(resolve_db_path(db)?, source_file, source_json, print_schema),
         Command::Quickstart {
             db,
             notes_root,
@@ -342,6 +360,7 @@ fn run(cli: Cli) -> Result<()> {
             body,
             input_file,
             input_json,
+            print_schema,
         } => handle_capture_lesson(
             resolve_db_path(db)?,
             resolve_notes_root(notes_root)?,
@@ -349,6 +368,7 @@ fn run(cli: Cli) -> Result<()> {
             body,
             input_file,
             input_json,
+            print_schema,
         ),
         Command::CaptureIssue {
             db,
@@ -357,6 +377,7 @@ fn run(cli: Cli) -> Result<()> {
             body,
             input_file,
             input_json,
+            print_schema,
         } => handle_capture_issue(
             resolve_db_path(db)?,
             resolve_notes_root(notes_root)?,
@@ -364,6 +385,7 @@ fn run(cli: Cli) -> Result<()> {
             body,
             input_file,
             input_json,
+            print_schema,
         ),
         Command::Completions { shell } => {
             handle_completions(shell);
@@ -390,11 +412,13 @@ fn run(cli: Cli) -> Result<()> {
             dedupe_key,
             payload,
             max_attempts,
+            print_schema,
         } => handle_pipeline_enqueue(
             resolve_db_path(db)?,
             &dedupe_key,
-            &payload,
+            payload.as_deref(),
             max_attempts.unwrap_or(_effective_config.pipeline.max_attempts),
+            print_schema,
         ),
         Command::PipelineRunOnce { db } => handle_pipeline_run_once(resolve_db_path(db)?),
         Command::PipelineStatus { db } => handle_pipeline_status(resolve_db_path(db)?),
@@ -524,7 +548,12 @@ fn handle_init(
     db: Utf8PathBuf,
     source_file: Option<Utf8PathBuf>,
     source_json: Option<String>,
+    print_schema: bool,
 ) -> Result<()> {
+    if print_schema {
+        println!("{}", InputSchemaKind::Entity.schema_text());
+        return Ok(());
+    }
     let conn = open_bootstrapped_db(&db)?;
 
     if let Some(source) = source_file {
@@ -561,7 +590,7 @@ fn handle_quickstart(
             .with_context(|| format!("failed to write default source file: {source_file}"))?;
     }
 
-    handle_init(db.clone(), Some(source_file.clone()), None)?;
+    handle_init(db.clone(), Some(source_file.clone()), None, false)?;
 
     println!("Database ready: {db}");
     println!("Notes root ready: {notes_root}");
@@ -633,8 +662,20 @@ fn handle_capture_lesson(
     body: Option<String>,
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
+    print_schema: bool,
 ) -> Result<()> {
-    let payload = parse_capture_payload(slug, body, input_file, input_json, "capture-lesson")?;
+    if print_schema {
+        println!("{}", InputSchemaKind::Lesson.schema_text());
+        return Ok(());
+    }
+    let payload = parse_capture_payload(
+        slug,
+        body,
+        input_file,
+        input_json,
+        "capture-lesson",
+        InputSchemaKind::Lesson,
+    )?;
     let conn = open_bootstrapped_db(&db)?;
     let notes = NoteStore::new(notes_root);
     capture_lesson(&conn, &notes, &payload.slug, &payload.body)?;
@@ -648,8 +689,20 @@ fn handle_capture_issue(
     body: Option<String>,
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
+    print_schema: bool,
 ) -> Result<()> {
-    let payload = parse_capture_payload(slug, body, input_file, input_json, "capture-issue")?;
+    if print_schema {
+        println!("{}", InputSchemaKind::Issue.schema_text());
+        return Ok(());
+    }
+    let payload = parse_capture_payload(
+        slug,
+        body,
+        input_file,
+        input_json,
+        "capture-issue",
+        InputSchemaKind::Issue,
+    )?;
     let conn = open_bootstrapped_db(&db)?;
     let notes = NoteStore::new(notes_root);
     capture_issue(&conn, &notes, &payload.slug, &payload.body)?;
@@ -662,6 +715,7 @@ fn parse_capture_payload(
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
     context: &str,
+    schema_kind: InputSchemaKind,
 ) -> Result<CapturePayload> {
     match (slug, body) {
         (Some(slug), Some(body)) => return Ok(CapturePayload { slug, body }),
@@ -673,7 +727,10 @@ fn parse_capture_payload(
         (None, None) => {}
     }
 
-    parse_payload::<CapturePayload>(input_file, input_json, context)
+    let raw = load_json_input(input_file, input_json, context)?;
+    validate_payload(&raw, schema_kind)
+        .with_context(|| format!("{context} payload failed schema validation"))?;
+    serde_json::from_str(&raw).with_context(|| format!("failed to parse {context} input JSON"))
 }
 
 fn print_get_result(requested_entity: &str, answer: Option<knowledge_core::store::QueryAnswer>) {
@@ -753,11 +810,25 @@ fn handle_history(db: Utf8PathBuf, entity: &str, limit: u32) -> Result<()> {
 fn handle_pipeline_enqueue(
     db: Utf8PathBuf,
     dedupe_key: &str,
-    payload: &str,
+    payload: Option<&str>,
     max_attempts: u32,
+    print_schema: bool,
 ) -> Result<()> {
+    if print_schema {
+        println!("{}", InputSchemaKind::PipelinePayload.schema_text());
+        return Ok(());
+    }
     let conn = open_bootstrapped_db(&db)?;
-    let result = enqueue_job(&conn, payload, dedupe_key, max_attempts)?;
+    let payload = payload.with_context(|| {
+        "missing --payload: provide escaped JSON or use --print-schema for schema output"
+    })?;
+    let value = validate_payload(payload, InputSchemaKind::PipelinePayload)
+        .context("pipeline-enqueue payload failed schema validation")?;
+    let raw_payload = value
+        .get("payload")
+        .and_then(|inner| inner.as_str())
+        .with_context(|| "pipeline-enqueue payload must include string field 'payload'")?;
+    let result = enqueue_job(&conn, raw_payload, dedupe_key, max_attempts)?;
     println!(
         "job_id={};state=queued;deduped={}",
         result.job_id, result.deduped
@@ -797,8 +868,15 @@ fn handle_pipeline_run_once(db: Utf8PathBuf) -> Result<()> {
 
 fn handle_pipeline_status(db: Utf8PathBuf) -> Result<()> {
     let conn = open_bootstrapped_db(&db)?;
-    let (queued, processing, failed) = queue_status(&conn)?;
-    println!("queued={queued};processing={processing};failed={failed}");
+    let status = queue_status(&conn)?;
+    println!(
+        "queued={};processing={};failed={};unknown_aliases={};unknown_notes={}",
+        status.queued,
+        status.processing,
+        status.failed,
+        status.unknown_aliases,
+        status.unknown_notes
+    );
     Ok(())
 }
 
