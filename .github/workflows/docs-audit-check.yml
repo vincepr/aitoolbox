@@ -1,0 +1,47 @@
+name: Docs Audit Check
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  enforce-audit-checkpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce checkpoint updates for architecture docs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base_ref="${{ github.base_ref }}"
+          head_ref="${{ github.head_ref }}"
+
+          git fetch origin "${base_ref}" "${head_ref}" --depth=1
+
+          changed_files="$(git diff --name-only "origin/${base_ref}...HEAD")"
+
+          architecture_changed="false"
+          audit_state_changed="false"
+
+          while IFS= read -r path; do
+            [[ -z "${path}" ]] && continue
+            if [[ "${path}" == docs/architecture/* ]]; then
+              architecture_changed="true"
+            fi
+            if [[ "${path}" == docs/.audit-state.json ]]; then
+              audit_state_changed="true"
+            fi
+          done <<< "${changed_files}"
+
+          if [[ "${architecture_changed}" == "true" && "${audit_state_changed}" != "true" ]]; then
+            echo "Architecture docs changed, but docs/.audit-state.json was not updated."
+            echo "Run ./scripts/audit-docs.sh and commit the checkpoint update."
+            exit 1
+          fi
+
+          echo "Docs audit checkpoint requirement satisfied."
