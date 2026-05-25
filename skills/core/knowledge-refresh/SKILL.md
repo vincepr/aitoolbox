@@ -17,16 +17,21 @@ Use this skill for periodic operational health checks, not routine query/update 
 1. Verify CLI and DB readiness:
    - `knowledge-cli version`
    - `knowledge-cli migrate --verify --dry-run`
-2. Validate migration posture:
+2. Print current JSON input schemas and confirm capture templates match:
+   - `knowledge-cli init --print-schema`
+   - `knowledge-cli capture-lesson --print-schema`
+   - `knowledge-cli capture-issue --print-schema`
+   - `knowledge-cli pipeline-enqueue --print-schema`
+3. Validate migration posture:
    - `bash scripts/migrate-knowledge-db.sh`
    - capture required/applied/failed state
-3. Validate contract surface:
+4. Validate contract surface:
    - run relevant contract tests (for example `cargo test -p knowledge-cli --test contracts`)
-4. Validate docs-code synchronization:
+5. Validate docs-code synchronization:
    - `bash scripts/audit-docs.sh`
-5. Validate skill/docs parity:
+6. Validate skill/docs parity:
    - ensure canonical skills and plugin copies are synchronized
-6. Summarize risk and prioritized next actions.
+7. Summarize risk and prioritized next actions.
 
 ## Output (strict)
 - `status`: `ok|partial|blocked`

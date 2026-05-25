@@ -1,0 +1,44 @@
+{
+    "$id": "https://aitoolbox/schemas/entity.v1.json",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["$schema", "entities"],
+    "properties": {
+        "$schema": {"const": "https://aitoolbox/schemas/entity.v1.json"},
+        "entities": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "canonical_name", "kind", "summary", "namespace", "package_name",
+                    "repo_name", "aliases", "location", "notes"
+                ],
+                "properties": {
+                    "canonical_name": {"type": "string", "minLength": 1},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["domain", "system", "project", "library", "tag", "lesson", "issue"]
+                    },
+                    "summary": {"type": ["string", "null"]},
+                    "namespace": {"type": ["string", "null"]},
+                    "package_name": {"type": ["string", "null"]},
+                    "repo_name": {"type": ["string", "null"]},
+                    "aliases": {"type": ["array", "null"], "items": {"type": "string"}},
+                    "location": {
+                        "type": ["object", "null"],
+                        "additionalProperties": false,
+                        "required": ["local_path", "git_url"],
+                        "properties": {
+                            "local_path": {"type": ["string", "null"]},
+                            "git_url": {"type": ["string", "null"]}
+                        }
+                    },
+                    "local_path": {"type": ["string", "null"]},
+                    "git_url": {"type": ["string", "null"]},
+                    "notes": {"type": ["array", "null"], "items": {"type": "string"}}
+                }
+            }
+        }
+    }
+}

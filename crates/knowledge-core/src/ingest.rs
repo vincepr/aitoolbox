@@ -60,6 +60,16 @@ pub struct RunOutcome {
     pub error: Option<String>,
 }
 
+/// Queue-state counters plus unknown collection coverage counters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueueStatus {
+    pub queued: u64,
+    pub processing: u64,
+    pub failed: u64,
+    pub unknown_aliases: u64,
+    pub unknown_notes: u64,
+}
+
 /// Provider abstraction used during classification phase.
 pub trait IngestProvider {
     fn classify(&self, normalized_payload: &str) -> std::result::Result<String, ProviderError>;
@@ -212,11 +222,19 @@ pub fn run_once(conn: &Connection, provider: &dyn IngestProvider) -> Result<Opti
 }
 
 /// Returns queue status counts.
-pub fn queue_status(conn: &Connection) -> Result<(u64, u64, u64)> {
+pub fn queue_status(conn: &Connection) -> Result<QueueStatus> {
     let queued = count_by_state(conn, IngestState::Queued)?;
     let processing = count_by_state(conn, IngestState::Processing)?;
     let failed = count_by_state(conn, IngestState::Failed)?;
-    Ok((queued, processing, failed))
+    let unknown_aliases = count_unknown_collection_state(conn, "aliases_state")?;
+    let unknown_notes = count_unknown_collection_state(conn, "notes_state")?;
+    Ok(QueueStatus {
+        queued,
+        processing,
+        failed,
+        unknown_aliases,
+        unknown_notes,
+    })
 }
 
 fn parse_phase(raw_payload: &str) -> Result<String> {
@@ -366,5 +384,11 @@ fn count_by_state(conn: &Connection, state: IngestState) -> Result<u64> {
         [state.as_str()],
         |row| row.get::<_, u64>(0),
     )?;
+    Ok(count)
+}
+
+fn count_unknown_collection_state(conn: &Connection, column: &str) -> Result<u64> {
+    let sql = format!("SELECT COUNT(*) FROM entities WHERE {column} = 'unknown'");
+    let count = conn.query_row(&sql, [], |row| row.get::<_, u64>(0))?;
     Ok(count)
 }
