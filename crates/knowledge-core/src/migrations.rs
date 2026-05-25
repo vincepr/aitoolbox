@@ -126,6 +126,34 @@ const MIGRATIONS: &[Migration] = &[
         ADD COLUMN recency_score INTEGER NOT NULL DEFAULT 0;
     "#,
     },
+    Migration {
+        version: 4,
+        name: "ingestion_jobs_and_results",
+        sql: r#"
+        CREATE TABLE IF NOT EXISTS ingest_jobs (
+            id INTEGER PRIMARY KEY,
+            payload TEXT NOT NULL,
+            payload_hash TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS ingest_results (
+            id INTEGER PRIMARY KEY,
+            job_id INTEGER NOT NULL UNIQUE,
+            normalized_text TEXT NOT NULL,
+            classification TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(job_id) REFERENCES ingest_jobs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ingest_jobs_status ON ingest_jobs(status);
+        CREATE INDEX IF NOT EXISTS idx_ingest_jobs_created_at ON ingest_jobs(created_at);
+    "#,
+    },
 ];
 
 /// Returns the latest supported schema version.
