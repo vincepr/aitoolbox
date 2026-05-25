@@ -343,7 +343,10 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
         .unwrap();
 
     assert_eq!(namespace, "CompanyName.Laika.Marketplaces.Jobs.PriceStock");
-    assert_eq!(package_name, "CompanyName.Laika.Marketplaces.Jobs.PriceStock");
+    assert_eq!(
+        package_name,
+        "CompanyName.Laika.Marketplaces.Jobs.PriceStock"
+    );
 
     let alias_count: i64 = conn
         .query_row(

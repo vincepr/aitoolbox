@@ -1,6 +1,6 @@
 ---
 name: knowledge-get
-description: "Resolve knowledge questions with exact-first retrieval, bounded fallback, and explicit confidence/provenance reporting."
+description: "Resolve knowledge questions with exact-first retrieval, ranked context matches, and explicit confidence/provenance reporting."
 ---
 
 # knowledge-get
@@ -17,12 +17,12 @@ Use this skill to answer repo/domain/system/entity questions with compact, confi
    - boundary/context recall
    - lesson/issue recall
 2. Run direct lookup first:
-   - `knowledge-cli get <entity> [--db ... --notes-root ...]`
+   - `knowledge-cli get <entity> [--db ... --notes-root ... --limit <N>]`
    - `get` supports direct normalized variants (`.`, `-`, `_`, `/`, case-insensitive).
-3. If no match, run bounded fallback once:
-   - `knowledge-cli list --grep <token> --limit 20`
-   - retry one plausible `get` candidate
-   - no broad scans unless user asks
+3. Use ranked matches from `get` output:
+   - `get` always prints `Top matches:` (default 3 ordered rows).
+   - increase candidates with `--limit <N>` when broader context is needed.
+   - use `list --grep` only when `get` returns no plausible candidates.
 4. Build compact answer from minimal relevant context.
 5. Apply lessons/issues inline:
    - if corrective lesson applies, include one concise line
