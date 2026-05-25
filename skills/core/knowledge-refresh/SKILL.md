@@ -16,7 +16,7 @@ Use this skill for periodic operational health checks, not routine query/update 
 ## Steps
 1. Verify CLI and DB readiness:
    - `knowledge-cli version`
-   - `knowledge-cli quickstart --dry-run` (or nearest non-mutating check)
+   - `knowledge-cli migrate --verify --dry-run`
 2. Validate migration posture:
    - `bash scripts/migrate-knowledge-db.sh`
    - capture required/applied/failed state

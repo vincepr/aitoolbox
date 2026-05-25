@@ -20,7 +20,7 @@ The design favors:
 
 Note: empty scaffolding folders are created on demand and are not kept in git with placeholder files.
 
-Start with the docs in [docs/architecture](/C:/Users/vince/RiderProjects/aitoolbox/docs/architecture/README.md) and [docs/ideas](/C:/Users/vince/RiderProjects/aitoolbox/docs/ideas/README.md).
+Start with the docs in [docs/architecture](docs/architecture/README.md) and [docs/ideas](docs/ideas/README.md).
 
 ## Knowledge CLI
 
