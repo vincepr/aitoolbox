@@ -12,7 +12,7 @@ fn help_lists_knowledge_subcommands() {
         ))
         .stdout(predicates::str::contains("Examples (normal):"))
         .stdout(predicates::str::contains(
-            "knowledge-cli get laika-marketplaces-jobs-pricestock",
+            "knowledge-cli get frameworkname-marketplaces-jobs-pricestock",
         ))
         .stdout(
             predicates::str::contains("knowledge-cli get MyCompanyName.Ebay.Custom.Client").not(),

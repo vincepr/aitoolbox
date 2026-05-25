@@ -221,11 +221,11 @@ fn exact_lookup_matches_separator_variants_directly() {
 
     let entity_id = store
         .upsert_entity(EntityInput {
-            canonical_name: "laika-marketplaces-jobs-pricestock".to_string(),
+            canonical_name: "frameworkname-marketplaces-jobs-pricestock".to_string(),
             kind: EntityKind::Library,
             summary: String::new(),
-            namespace: Some("CompanyName.Laika.Marketplaces.Jobs.PriceStock".to_string()),
-            package_name: Some("CompanyName.Laika.Marketplaces.Jobs.PriceStock".to_string()),
+            namespace: Some("CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock".to_string()),
+            package_name: Some("CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock".to_string()),
             repo_name: Some("PriceStock".to_string()),
         })
         .unwrap();
@@ -233,21 +233,21 @@ fn exact_lookup_matches_separator_variants_directly() {
         "INSERT INTO aliases (entity_id, alias) VALUES (?1, ?2)",
         (
             entity_id,
-            "laika/Marketplaces/Jobs/PriceStock".to_ascii_lowercase(),
+            "frameworkname/Marketplaces/Jobs/PriceStock".to_ascii_lowercase(),
         ),
     )
     .unwrap();
 
     for query in [
-        "laika-marketplaces-jobs-pricestock",
-        "Laika.Marketplaces.Jobs.PriceStock",
-        "laika/Marketplaces/Jobs/PriceStock",
-        "laika_marketplaces.jobs-pricestock",
+        "frameworkname-marketplaces-jobs-pricestock",
+        "FrameworkName.Marketplaces.Jobs.PriceStock",
+        "frameworkname/Marketplaces/Jobs/PriceStock",
+        "frameworkname_marketplaces.jobs-pricestock",
     ] {
         let result = store.lookup_exact(query).unwrap().expect("match");
         assert_eq!(
             result.entity.canonical_name,
-            "laika-marketplaces-jobs-pricestock"
+            "frameworkname-marketplaces-jobs-pricestock"
         );
     }
 }
@@ -292,11 +292,11 @@ fn search_best_matches_namespace_suffix_and_orders_exact_first() {
 
     store
         .upsert_entity(EntityInput {
-            canonical_name: "laika-prices-priceapi".to_string(),
+            canonical_name: "frameworkname-prices-priceapi".to_string(),
             kind: EntityKind::Library,
             summary: String::new(),
-            namespace: Some("CompanyName.Laika.Prices.PriceApi".to_string()),
-            package_name: Some("CompanyName.Laika.Prices.PriceApi".to_string()),
+            namespace: Some("CompanyName.FrameworkName.Prices.PriceApi".to_string()),
+            package_name: Some("CompanyName.FrameworkName.Prices.PriceApi".to_string()),
             repo_name: Some("PriceApi".to_string()),
         })
         .unwrap();
@@ -305,7 +305,7 @@ fn search_best_matches_namespace_suffix_and_orders_exact_first() {
         .unwrap();
 
     let matches = store.search_best("Prices.PriceApi", 3).unwrap();
-    assert_eq!(matches[0].canonical_name, "laika-prices-priceapi");
+    assert_eq!(matches[0].canonical_name, "frameworkname-prices-priceapi");
 }
 
 #[test]
@@ -319,7 +319,7 @@ fn search_best_prefers_exact_name_for_context_queries() {
         .unwrap();
     store
         .upsert_entity(EntityInput::new(
-            "laika-marketplaces-jobs-pricestock",
+            "frameworkname-marketplaces-jobs-pricestock",
             EntityKind::Library,
         ))
         .unwrap();

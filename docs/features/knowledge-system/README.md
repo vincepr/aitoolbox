@@ -19,7 +19,7 @@ The codebase and adjacent company systems contain important knowledge that is ha
 - system boundaries such as `Amazon`, `Ebay`, and `LeroyMerlin`
 - repo and macro-repo layout differences across systems
 - reusable libraries and published packages such as `MyCompanyName.Ebay.Custom.Client`
-- shared patterns such as `Laika`
+- shared patterns such as `FrameworkName`
 - short lessons about critical mistakes to avoid next time
 - workflow issues that need larger architecture or process improvements
 
@@ -92,7 +92,7 @@ Examples:
 - `amazon`, `ebay`, and `leroy-merlin` are `system`s
 - `ebay-common` and `ebay-prices-api` are `project`s
 - `MyCompanyName.Ebay.Custom.Client` is a `library`
-- `laika-framework` is a `tag`
+- `frameworkname-framework` is a `tag`
 
 These entities should form a graph. A domain contains systems, systems relate to projects, projects may publish libraries, and tags provide cross-cutting query hints.
 

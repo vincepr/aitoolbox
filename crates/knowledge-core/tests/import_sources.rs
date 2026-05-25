@@ -309,11 +309,11 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
     let source = r#"{
       "$schema": "https://aitoolbox/schemas/entity.v1.json",
       "namespace_prefix_mappings": {
-        "laika": "CompanyName.Laika"
+        "frameworkname": "CompanyName.FrameworkName"
       },
       "entities": [
         {
-          "canonical_name": "laika-marketplaces-jobs-pricestock",
+          "canonical_name": "frameworkname-marketplaces-jobs-pricestock",
           "kind": "project",
           "summary": null,
           "namespace": null,
@@ -335,17 +335,17 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
             "
             SELECT namespace, package_name
             FROM entities
-            WHERE canonical_name = 'laika-marketplaces-jobs-pricestock'
+            WHERE canonical_name = 'frameworkname-marketplaces-jobs-pricestock'
             ",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .unwrap();
 
-    assert_eq!(namespace, "CompanyName.Laika.Marketplaces.Jobs.PriceStock");
+    assert_eq!(namespace, "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock");
     assert_eq!(
         package_name,
-        "CompanyName.Laika.Marketplaces.Jobs.PriceStock"
+        "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock"
     );
 
     let alias_count: i64 = conn
@@ -353,7 +353,7 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
             "
             SELECT COUNT(*) FROM aliases a
             JOIN entities e ON e.id = a.entity_id
-            WHERE e.canonical_name = 'laika-marketplaces-jobs-pricestock'
+            WHERE e.canonical_name = 'frameworkname-marketplaces-jobs-pricestock'
             ",
             [],
             |row| row.get(0),
@@ -362,9 +362,9 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
     assert_eq!(alias_count, 4);
 
     let aliases = [
-        "CompanyName.Laika.Marketplaces.Jobs.PriceStock",
-        "laika/Marketplaces/Jobs/PriceStock",
-        "Laika.Marketplaces.Jobs.PriceStock",
+        "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock",
+        "frameworkname/Marketplaces/Jobs/PriceStock",
+        "FrameworkName.Marketplaces.Jobs.PriceStock",
         "PriceStock",
     ];
     for alias in aliases {
@@ -374,17 +374,17 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
             .unwrap();
         assert_eq!(
             result.entity.canonical_name,
-            "laika-marketplaces-jobs-pricestock"
+            "frameworkname-marketplaces-jobs-pricestock"
         );
     }
 
     let uppercase = KnowledgeStore::new(&conn)
-        .lookup_exact("RELAXDAYS.LAIKA.MARKETPLACES.JOBS.PRICESTOCK")
+        .lookup_exact("COMPANYNAME.FRAMEWORKNAME.MARKETPLACES.JOBS.PRICESTOCK")
         .unwrap()
         .unwrap();
     assert_eq!(
         uppercase.entity.canonical_name,
-        "laika-marketplaces-jobs-pricestock"
+        "frameworkname-marketplaces-jobs-pricestock"
     );
 }
 

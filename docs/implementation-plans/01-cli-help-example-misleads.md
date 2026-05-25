@@ -11,7 +11,7 @@
 - Modify: `crates/knowledge-cli/tests/help.rs`
 
 ## Tasks
-1. Update `get` argument help string example to `laika-marketplaces-jobs-pricestock`.
+1. Update `get` argument help string example to `frameworkname-marketplaces-jobs-pricestock`.
 2. Update after-help usage examples to match canonical format.
 3. Update help snapshot test expectations.
 4. Run verification baseline.

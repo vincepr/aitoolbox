@@ -1,6 +1,6 @@
 {
   "namespace_prefix_mappings": {
-    "laika": "CompanyName.Laika"
+    "frameworkname": "CompanyName.FrameworkName"
   },
   "entities": [
     {

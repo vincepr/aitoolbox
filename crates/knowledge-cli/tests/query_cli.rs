@@ -643,13 +643,13 @@ fn get_resolves_separator_normalized_variants() {
           "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {
-              "canonical_name": "laika-marketplaces-jobs-pricestock",
+              "canonical_name": "frameworkname-marketplaces-jobs-pricestock",
               "kind": "library",
               "summary": null,
-              "namespace": "CompanyName.Laika.Marketplaces.Jobs.PriceStock",
-              "package_name": "CompanyName.Laika.Marketplaces.Jobs.PriceStock",
+              "namespace": "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock",
+              "package_name": "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock",
               "repo_name": "PriceStock",
-              "aliases": ["Laika.Marketplaces.Jobs.PriceStock", "laika/Marketplaces/Jobs/PriceStock"],
+              "aliases": ["FrameworkName.Marketplaces.Jobs.PriceStock", "frameworkname/Marketplaces/Jobs/PriceStock"],
               "location": null,
               "notes": []
             }
@@ -671,9 +671,9 @@ fn get_resolves_separator_normalized_variants() {
         .success();
 
     for query in [
-        "Laika.Marketplaces.Jobs.PriceStock",
-        "laika-marketplaces-jobs-pricestock",
-        "laika/Marketplaces/Jobs/PriceStock",
+        "FrameworkName.Marketplaces.Jobs.PriceStock",
+        "frameworkname-marketplaces-jobs-pricestock",
+        "frameworkname/Marketplaces/Jobs/PriceStock",
     ] {
         Command::cargo_bin("knowledge-cli")
             .unwrap()
@@ -687,7 +687,7 @@ fn get_resolves_separator_normalized_variants() {
             ])
             .assert()
             .success()
-            .stdout(contains("laika-marketplaces-jobs-pricestock"));
+            .stdout(contains("frameworkname-marketplaces-jobs-pricestock"));
     }
 }
 
@@ -704,7 +704,7 @@ fn get_prints_ranked_matches_by_default_even_when_exact_match_exists() {
           "$schema": "https://aitoolbox/schemas/entity.v1.json",
           "entities": [
             {"canonical_name": "marketplaces", "kind": "domain", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
-            {"canonical_name": "laika-marketplaces-jobs-pricestock", "kind": "library", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "frameworkname-marketplaces-jobs-pricestock", "kind": "library", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
             {"canonical_name": "marketplaces-ops", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
             {"canonical_name": "marketplaces-infra", "kind": "project", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []}
           ]
@@ -932,5 +932,5 @@ fn version_prints_semver() {
         .args(["version"])
         .assert()
         .success()
-        .stdout(contains("0.3.0"));
+        .stdout(contains(env!("CARGO_PKG_VERSION")));
 }
