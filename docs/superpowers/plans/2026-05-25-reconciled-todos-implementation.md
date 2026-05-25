@@ -42,7 +42,7 @@
 - Test: `crates/knowledge-core/tests/schema_bootstrap.rs`
 - Test: `crates/knowledge-core/tests/schema_migrate_verify.rs` (create)
 
-- [ ] **Step 1: Write failing migration verify tests**
+- [x] **Step 1: Write failing migration verify tests**
 ```rust
 #[test]
 fn verify_fails_when_db_version_is_behind_latest() {
@@ -54,11 +54,11 @@ fn verify_fails_when_db_version_is_behind_latest() {
 }
 ```
 
-- [ ] **Step 2: Run tests to confirm failure**
+- [x] **Step 2: Run tests to confirm failure**
 Run: `cargo test -p knowledge-core schema_migrate_verify -v`
 Expected: FAIL because `verify_schema` is missing.
 
-- [ ] **Step 3: Implement minimal migration engine and verify API**
+- [x] **Step 3: Implement minimal migration engine and verify API**
 ```rust
 pub fn verify_schema(conn: &Connection) -> Result<()> {
     let current = current_schema_version(conn)?;
@@ -70,11 +70,11 @@ pub fn verify_schema(conn: &Connection) -> Result<()> {
 }
 ```
 
-- [ ] **Step 4: Re-run targeted tests**
+- [x] **Step 4: Re-run targeted tests**
 Run: `cargo test -p knowledge-core schema_migrate_verify -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add crates/knowledge-core/src/schema.rs crates/knowledge-core/src/migrations.rs crates/knowledge-core/src/lib.rs crates/knowledge-core/tests/schema_migrate_verify.rs crates/knowledge-cli/src/main.rs
 git commit -m "feat: add versioned schema migration and verify gate"
@@ -90,7 +90,7 @@ git commit -m "feat: add versioned schema migration and verify gate"
 - Modify: `crates/knowledge-cli/src/main.rs`
 - Test: `crates/knowledge-core/tests/audit_history.rs` (create)
 
-- [ ] **Step 1: Write failing audit emission test**
+- [x] **Step 1: Write failing audit emission test**
 ```rust
 #[test]
 fn capture_lesson_writes_mutation_event() {
@@ -103,11 +103,11 @@ fn capture_lesson_writes_mutation_event() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 Run: `cargo test -p knowledge-core audit_history -v`
 Expected: FAIL due to missing table or write path.
 
-- [ ] **Step 3: Implement audit writes and idempotency checks**
+- [x] **Step 3: Implement audit writes and idempotency checks**
 ```rust
 pub fn record_mutation_event(conn: &Connection, event: &MutationEvent) -> Result<()> {
     conn.execute(
@@ -118,11 +118,11 @@ pub fn record_mutation_event(conn: &Connection, event: &MutationEvent) -> Result
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 Run: `cargo test -p knowledge-core audit_history capture import_sources -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add crates/knowledge-core/src/audit.rs crates/knowledge-core/src/import.rs crates/knowledge-core/src/capture.rs crates/knowledge-core/src/store.rs crates/knowledge-cli/src/main.rs crates/knowledge-core/tests/audit_history.rs
 git commit -m "feat: add mutation provenance and idempotency safeguards"
@@ -136,7 +136,7 @@ git commit -m "feat: add mutation provenance and idempotency safeguards"
 - Modify: `crates/knowledge-cli/tests/query_cli.rs`
 - Create: `docs/CONTRACT_TESTING.md`
 
-- [ ] **Step 1: Add failing contract fixture test**
+- [x] **Step 1: Add failing contract fixture test**
 ```rust
 #[test]
 fn get_output_matches_contract_v1() {
@@ -146,11 +146,11 @@ fn get_output_matches_contract_v1() {
 }
 ```
 
-- [ ] **Step 2: Run test to confirm fixture mismatch**
+- [x] **Step 2: Run test to confirm fixture mismatch**
 Run: `cargo test -p knowledge-cli get_output_matches_contract_v1 -v`
 Expected: FAIL until CLI output is aligned.
 
-- [ ] **Step 3: Align output shape + fixture schema**
+- [x] **Step 3: Align output shape + fixture schema**
 ```rust
 #[derive(serde::Serialize)]
 struct GetResponseV1 {
@@ -160,11 +160,11 @@ struct GetResponseV1 {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 Run: `cargo test -p knowledge-cli --tests -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add crates/knowledge-core/tests/fixtures/contracts/v1 crates/knowledge-cli/tests/help.rs crates/knowledge-cli/tests/query_cli.rs docs/CONTRACT_TESTING.md
 git commit -m "test: unify cli contracts with versioned fixtures"
