@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use predicates::prelude::PredicateBooleanExt;
 
 #[test]
 fn help_lists_knowledge_subcommands() {
@@ -10,6 +11,12 @@ fn help_lists_knowledge_subcommands() {
             "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.",
         ))
         .stdout(predicates::str::contains("Examples (normal):"))
+        .stdout(predicates::str::contains(
+            "knowledge-cli get laika-marketplaces-jobs-pricestock",
+        ))
+        .stdout(
+            predicates::str::contains("knowledge-cli get MyCompanyName.Ebay.Custom.Client").not(),
+        )
         .stdout(predicates::str::contains("get"))
         .stdout(predicates::str::contains("init"))
         .stdout(predicates::str::contains("quickstart"))
