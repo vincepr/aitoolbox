@@ -320,6 +320,117 @@ fn get_falls_back_to_entity_summary_when_note_ref_is_missing() {
 }
 
 #[test]
+fn get_parent_match_prints_related_block() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
+          "entities": [
+            {"canonical_name": "marketplaces", "kind": "domain", "summary": "Domain summary", "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-overview", "kind": "lesson", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": ["lesson/marketplaces-overview.md"]},
+            {"canonical_name": "laika-marketplaces-catalog", "kind": "library", "summary": null, "namespace": null, "package_name": null, "repo_name": "Catalog", "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "laika-marketplaces", "kind": "system", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []}
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "get",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "marketplaces",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("Related ("))
+        .stdout(contains("\tmarketplaces-overview\tlesson\thas_note"))
+        .stdout(contains("\tlaika-marketplaces-catalog\tlibrary\thas_note"));
+}
+
+#[test]
+fn get_related_limit_bounds_related_output() {
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+
+    fs::write(
+        &source,
+        r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
+          "entities": [
+            {"canonical_name": "marketplaces", "kind": "domain", "summary": "Domain summary", "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-overview", "kind": "lesson", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "marketplaces-sql-rules", "kind": "lesson", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []},
+            {"canonical_name": "laika-marketplaces-catalog", "kind": "library", "summary": null, "namespace": null, "package_name": null, "repo_name": null, "aliases": [], "location": null, "notes": []}
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "get",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "--related-limit",
+            "2",
+            "marketplaces",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let text = String::from_utf8(output).unwrap();
+    let related_lines = text
+        .lines()
+        .filter(|line| {
+            line.contains('\t') && (line.contains("\thas_note") || line.contains("\tno_note"))
+        })
+        .count();
+    assert_eq!(related_lines, 2);
+}
+
+#[test]
 fn list_supports_grep_hit_and_miss() {
     let temp = tempdir().unwrap();
     let db = temp.path().join("nested").join("knowledge.db");
@@ -799,7 +910,7 @@ fn get_prints_ranked_matches_by_default_even_when_exact_match_exists() {
         .clone();
 
     let text = String::from_utf8(output).unwrap();
-    let match_lines = text.lines().filter(|line| line.contains('\t')).count();
+    let match_lines = count_top_match_rows(&text);
     assert!(text.contains("Top matches:"));
     assert_eq!(match_lines, 3);
 }
@@ -857,8 +968,29 @@ fn get_limit_controls_ranked_match_count() {
         .clone();
 
     let text = String::from_utf8(output).unwrap();
-    let match_lines = text.lines().filter(|line| line.contains('\t')).count();
+    let match_lines = count_top_match_rows(&text);
     assert_eq!(match_lines, 5);
+}
+
+fn count_top_match_rows(output: &str) -> usize {
+    let mut in_top_matches = false;
+    let mut count = 0usize;
+    for line in output.lines() {
+        if line == "Top matches:" {
+            in_top_matches = true;
+            continue;
+        }
+        if !in_top_matches {
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+        if line.contains('\t') {
+            count += 1;
+        }
+    }
+    count
 }
 
 #[test]

@@ -336,3 +336,87 @@ fn search_best_prefers_exact_name_for_context_queries() {
     assert_eq!(matches.len(), 3);
     assert_eq!(matches[0].canonical_name, "marketplaces");
 }
+
+#[test]
+fn related_children_orders_by_note_then_kind_then_name() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+
+    let parent_id = store
+        .upsert_entity(EntityInput::new("marketplaces", EntityKind::Domain))
+        .unwrap();
+    let lesson_id = store
+        .upsert_entity(EntityInput::new(
+            "marketplaces-overview",
+            EntityKind::Lesson,
+        ))
+        .unwrap();
+    let library_id = store
+        .upsert_entity(EntityInput::new(
+            "laika-marketplaces-catalog",
+            EntityKind::Library,
+        ))
+        .unwrap();
+    let system_id = store
+        .upsert_entity(EntityInput::new("laika-marketplaces", EntityKind::System))
+        .unwrap();
+
+    store
+        .link(parent_id, lesson_id, RelationshipKind::Contains)
+        .unwrap();
+    store
+        .link(parent_id, library_id, RelationshipKind::Contains)
+        .unwrap();
+    store
+        .link(parent_id, system_id, RelationshipKind::Contains)
+        .unwrap();
+    conn.execute(
+        "UPDATE entities SET notes_state = 'known' WHERE id = ?1",
+        [lesson_id],
+    )
+    .unwrap();
+
+    let related = store
+        .related_children(parent_id, "marketplaces", 10)
+        .unwrap();
+    assert_eq!(related.total, 3);
+    assert_eq!(related.rows.len(), 3);
+    assert_eq!(related.rows[0].canonical_name, "marketplaces-overview");
+    assert!(related.rows[0].has_note);
+}
+
+#[test]
+fn related_children_respects_limit_and_heuristic_prefix() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+
+    let parent_id = store
+        .upsert_entity(EntityInput::new("marketplaces", EntityKind::Domain))
+        .unwrap();
+    store
+        .upsert_entity(EntityInput::new(
+            "marketplaces-overview",
+            EntityKind::Lesson,
+        ))
+        .unwrap();
+    store
+        .upsert_entity(EntityInput::new(
+            "laika-marketplaces-catalog",
+            EntityKind::Library,
+        ))
+        .unwrap();
+    store
+        .upsert_entity(EntityInput::new(
+            "marketplaces-sql-rules",
+            EntityKind::Lesson,
+        ))
+        .unwrap();
+
+    let related = store
+        .related_children(parent_id, "marketplaces", 2)
+        .unwrap();
+    assert_eq!(related.rows.len(), 2);
+    assert!(related.total >= 3);
+}
