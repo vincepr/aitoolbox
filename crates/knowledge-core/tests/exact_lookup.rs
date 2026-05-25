@@ -267,6 +267,24 @@ fn exact_lookup_requires_all_query_tokens_for_candidate_match() {
 }
 
 #[test]
+fn exact_lookup_does_not_short_circuit_on_first_non_matching_candidate() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+
+    // This token match is retrieved first by canonical-name ordering but is not an exact match.
+    store
+        .upsert_entity(EntityInput::new("a-marketplaces-service", EntityKind::Library))
+        .unwrap();
+    store
+        .upsert_entity(EntityInput::new("marketplaces", EntityKind::Domain))
+        .unwrap();
+
+    let result = store.lookup_exact("marketplaces").unwrap().expect("match");
+    assert_eq!(result.entity.canonical_name, "marketplaces");
+}
+
+#[test]
 fn search_best_matches_namespace_suffix_and_orders_exact_first() {
     let conn = Connection::open_in_memory().unwrap();
     bootstrap(&conn).unwrap();

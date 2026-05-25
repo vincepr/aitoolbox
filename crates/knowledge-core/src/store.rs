@@ -256,7 +256,9 @@ impl EntityMatcher for NormalizedRuleMatcher {
         let mut best: Option<(u8, &EntityCandidate)> = None;
 
         for candidate in candidates {
-            let precedence = match_precedence(query, &normalized_query, candidate)?;
+            let Some(precedence) = match_precedence(query, &normalized_query, candidate) else {
+                continue;
+            };
             if let Some((best_precedence, best_candidate)) = best {
                 if precedence < best_precedence
                     || (precedence == best_precedence
