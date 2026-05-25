@@ -342,7 +342,10 @@ fn source_file_derives_namespace_package_and_aliases_with_configured_prefix_mapp
         )
         .unwrap();
 
-    assert_eq!(namespace, "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock");
+    assert_eq!(
+        namespace,
+        "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock"
+    );
     assert_eq!(
         package_name,
         "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock"

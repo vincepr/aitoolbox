@@ -752,10 +752,14 @@ fn print_get_result(
     match answer {
         Some(answer) => {
             println!("{}", answer.canonical_name);
-            if answer.summary.is_empty() {
-                println!("No note summary stored");
-            } else {
-                println!("{}", answer.summary);
+            match answer.summary_source {
+                knowledge_core::store::SummarySource::Note => println!("{}", answer.summary),
+                knowledge_core::store::SummarySource::Entity => {
+                    println!("Summary (entity): {}", answer.summary)
+                }
+                knowledge_core::store::SummarySource::None => {
+                    println!("No note summary stored");
+                }
             }
 
             if let Some(location) = answer.location {

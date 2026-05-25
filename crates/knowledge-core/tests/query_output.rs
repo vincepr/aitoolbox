@@ -2,7 +2,7 @@ use camino::Utf8PathBuf;
 use knowledge_core::model::EntityKind;
 use knowledge_core::notes::NoteStore;
 use knowledge_core::schema::bootstrap;
-use knowledge_core::store::{EntityInput, KnowledgeStore};
+use knowledge_core::store::{EntityInput, KnowledgeStore, SummarySource};
 use rusqlite::Connection;
 use tempfile::tempdir;
 
@@ -36,8 +36,68 @@ fn exact_query_loads_only_the_primary_note_summary() {
         .unwrap();
 
     assert_eq!(answer.summary, "Used to call Ebay custom endpoints.");
+    assert_eq!(answer.summary_source, SummarySource::Note);
     assert!(answer.location.is_none());
     assert!(answer.navigation_hints.is_empty());
+}
+
+#[test]
+fn exact_query_falls_back_to_entity_summary_without_note_ref() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+    let temp = tempdir().unwrap();
+    let notes = NoteStore::new(Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap());
+
+    store
+        .upsert_entity(EntityInput {
+            canonical_name: "marketplaces".to_string(),
+            kind: EntityKind::Domain,
+            summary: "Domain-level summary from entities table.".to_string(),
+            namespace: None,
+            package_name: None,
+            repo_name: None,
+        })
+        .unwrap();
+
+    let answer = store.query_exact("marketplaces", &notes).unwrap().unwrap();
+
+    assert_eq!(answer.summary, "Domain-level summary from entities table.");
+    assert_eq!(answer.summary_source, SummarySource::Entity);
+}
+
+#[test]
+fn exact_query_prefers_note_summary_when_both_sources_exist() {
+    let conn = Connection::open_in_memory().unwrap();
+    bootstrap(&conn).unwrap();
+    let store = KnowledgeStore::new(&conn);
+    let temp = tempdir().unwrap();
+    let notes = NoteStore::new(Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap());
+
+    let entity_id = store
+        .upsert_entity(EntityInput {
+            canonical_name: "marketplaces".to_string(),
+            kind: EntityKind::Domain,
+            summary: "Domain-level summary from entities table.".to_string(),
+            namespace: None,
+            package_name: None,
+            repo_name: None,
+        })
+        .unwrap();
+    let note_path = notes
+        .write_note(
+            "domain",
+            "marketplaces.md",
+            "# Header\n\nNote-backed summary should win.",
+        )
+        .unwrap();
+    let note_path = notes.relative_path(&note_path).unwrap();
+    store.attach_note(entity_id, note_path).unwrap();
+
+    let answer = store.query_exact("marketplaces", &notes).unwrap().unwrap();
+
+    assert_eq!(answer.summary, "Note-backed summary should win.");
+    assert_eq!(answer.summary_source, SummarySource::Note);
 }
 
 #[test]

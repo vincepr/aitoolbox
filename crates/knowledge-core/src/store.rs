@@ -86,10 +86,23 @@ pub struct QueryAnswer {
     pub canonical_name: String,
     /// Extracted note summary.
     pub summary: String,
+    /// Provenance for the rendered summary content.
+    pub summary_source: SummarySource,
     /// Optional source location metadata when available in the index.
     pub location: Option<EntityLocation>,
     /// Reserved navigation hints for future output expansions.
     pub navigation_hints: Vec<String>,
+}
+
+/// Source of summary text rendered by `get`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SummarySource {
+    /// Summary was extracted from the linked note.
+    Note,
+    /// Summary came from `entities.summary` fallback.
+    Entity,
+    /// No summary content was available.
+    None,
 }
 
 /// Source location metadata for an indexed entity.
@@ -477,15 +490,39 @@ impl<'a> KnowledgeStore<'a> {
             )
             .optional()?;
 
-        let summary = match note_path {
-            Some(path) => first_paragraph(&notes.read_note(&path)?),
-            None => String::new(),
+        let (summary, summary_source) = match note_path {
+            Some(path) => (
+                first_paragraph(&notes.read_note(&path)?),
+                SummarySource::Note,
+            ),
+            None => {
+                let entity_summary = self
+                    .conn
+                    .query_row(
+                        "SELECT COALESCE(summary, '') FROM entities WHERE id = ?1",
+                        [lookup.entity.id],
+                        |row| row.get::<_, String>(0),
+                    )?
+                    .trim()
+                    .to_string();
+                if entity_summary.is_empty() {
+                    (String::new(), SummarySource::None)
+                } else {
+                    (entity_summary, SummarySource::Entity)
+                }
+            }
+        };
+        let summary_source = if summary.is_empty() {
+            SummarySource::None
+        } else {
+            summary_source
         };
         let location = self.load_entity_location(lookup.entity.id)?;
 
         Ok(Some(QueryAnswer {
             canonical_name: lookup.entity.canonical_name,
             summary,
+            summary_source,
             location,
             navigation_hints: Vec::new(),
         }))

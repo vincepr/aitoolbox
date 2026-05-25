@@ -225,7 +225,9 @@ fn exact_lookup_matches_separator_variants_directly() {
             kind: EntityKind::Library,
             summary: String::new(),
             namespace: Some("CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock".to_string()),
-            package_name: Some("CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock".to_string()),
+            package_name: Some(
+                "CompanyName.FrameworkName.Marketplaces.Jobs.PriceStock".to_string(),
+            ),
             repo_name: Some("PriceStock".to_string()),
         })
         .unwrap();
@@ -274,7 +276,10 @@ fn exact_lookup_does_not_short_circuit_on_first_non_matching_candidate() {
 
     // This token match is retrieved first by canonical-name ordering but is not an exact match.
     store
-        .upsert_entity(EntityInput::new("a-marketplaces-service", EntityKind::Library))
+        .upsert_entity(EntityInput::new(
+            "a-marketplaces-service",
+            EntityKind::Library,
+        ))
         .unwrap();
     store
         .upsert_entity(EntityInput::new("marketplaces", EntityKind::Domain))
