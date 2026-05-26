@@ -1,5 +1,12 @@
 # aitoolbox
 
+cargo install --path crates/knowledge-cli
+
+Oneof
+- sudo docker compose -f docker-compose.embeddings.tei.yml up
+- sudo docker compose -f docker-compose.embeddings.ollama.yml up
+
+
 Local-first toolbox for AI-assisted coding workflows across multiple CLI tools and execution strategies.
 
 The repository is intentionally structured as a framework host rather than a single application. It is meant to support:

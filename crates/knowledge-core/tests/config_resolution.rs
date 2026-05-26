@@ -37,9 +37,16 @@ fn embeddings_defaults_are_none_and_openai_compatible() {
     let file_cfg = r#"{}"#;
     let effective = resolve_for_test(file_cfg, None, None).expect("defaults resolve");
     assert_eq!(effective.embeddings.provider, "none");
-    assert_eq!(effective.embeddings.model, "google/embeddinggemma-300m");
-    assert_eq!(effective.embeddings.base_url, "http://127.0.0.1:8080/v1");
-    assert_eq!(effective.embeddings.dimensions, Some(768));
+    assert_eq!(effective.embeddings.model, None);
+    assert_eq!(effective.embeddings.base_url, None);
+    assert_eq!(effective.embeddings.dimensions, None);
+}
+
+#[test]
+fn enabled_embeddings_require_model_and_base_url() {
+    let file_cfg = r#"{"embeddings":{"provider":"openai-compatible"}}"#;
+    let err = resolve_for_test(file_cfg, None, None).unwrap_err();
+    assert!(err.to_string().contains("embeddings.model"));
 }
 
 #[test]

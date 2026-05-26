@@ -1137,9 +1137,9 @@ fn openai_compatible_embeddings_index_and_recall_with_real_container() {
     let notes = temp.path().join("notes");
     let source = temp.path().join("sources.json");
     let base_url = env::var("KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080/v1".to_string());
-    let model = env::var("KNOWLEDGE_CLI_EMBEDDINGS_MODEL")
-        .unwrap_or_else(|_| "google/embeddinggemma-300m".to_string());
+        .unwrap_or_else(|_| "http://127.0.0.1:11434/v1".to_string());
+    let model =
+        env::var("KNOWLEDGE_CLI_EMBEDDINGS_MODEL").unwrap_or_else(|_| "embeddinggemma".to_string());
 
     fs::write(
         &source,
@@ -1201,8 +1201,6 @@ fn openai_compatible_embeddings_index_and_recall_with_real_container() {
             &model,
             "--embeddings-timeout-ms",
             "120000",
-            "--embeddings-dimensions",
-            "768",
         ])
         .assert()
         .success()
@@ -1227,8 +1225,6 @@ fn openai_compatible_embeddings_index_and_recall_with_real_container() {
             &model,
             "--embeddings-timeout-ms",
             "120000",
-            "--embeddings-dimensions",
-            "768",
         ])
         .assert()
         .success()

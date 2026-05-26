@@ -17,34 +17,39 @@ Supported config keys:
     "top_k": 5
   },
   "embeddings": {
-    "provider": "none",
-    "model": "google/embeddinggemma-300m",
-    "base_url": "http://127.0.0.1:8080/v1",
-    "timeout_ms": 5000,
-    "dimensions": 768
+    "provider": "openai-compatible",
+    "model": "embeddinggemma",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "timeout_ms": 5000
   }
 }
 ```
 
 `embeddings.provider` supports `none` and `openai-compatible`.
 
-Default embedding model: [`google/embeddinggemma-300m`](https://huggingface.co/google/embeddinggemma-300m).
+Embeddings are disabled by default. When `embeddings.provider` is not `none`, `model` and
+`base_url` must be configured explicitly.
 
-This Hugging Face repository is gated; accept the model license and set `HF_TOKEN` before first
-container startup.
-
-Containerized Text Embeddings Inference startup and integration test:
+Containerized Ollama startup and integration test:
 
 ```bash
-HF_TOKEN=... docker compose -f docker-compose.embeddings.yml up -d tei
+docker compose -f docker-compose.embeddings.ollama.yml up -d
+KNOWLEDGE_CLI_EMBEDDINGS_INTEGRATION=1 cargo test \
+  openai_compatible_embeddings_index_and_recall_with_real_container --test query_cli
+```
+
+Alternative TEI stack with a public Qwen model:
+
+```bash
+docker compose -f docker-compose.embeddings.tei.yml up -d
+KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL=http://127.0.0.1:18080/v1 \
+KNOWLEDGE_CLI_EMBEDDINGS_MODEL=onnx-community/Qwen3-Embedding-0.6B-ONNX \
 KNOWLEDGE_CLI_EMBEDDINGS_INTEGRATION=1 cargo test \
   openai_compatible_embeddings_index_and_recall_with_real_container --test query_cli
 ```
 
 Other OpenAI-compatible embedding servers can use the same provider by changing `base_url` and
-`model`. For example, Ollama's compatible endpoint is typically `http://127.0.0.1:11434/v1`, with
-the model name managed by Ollama. The `dimensions` field is sent as the OpenAI-compatible
-`dimensions` request field, so TEI and Ollama receive the same vector-size setting.
+`model`.
 
 Related environment variables:
 - `KNOWLEDGE_CLI_CONFIG_FILE`

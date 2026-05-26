@@ -61,8 +61,8 @@ impl OpenAiCompatibleEmbeddingProvider {
     ///
     /// # Arguments
     ///
-    /// * `base_url` - Base URL ending in `/v1`, for example `http://127.0.0.1:8080/v1`.
-    /// * `model` - Embedding model id, for example `google/embeddinggemma-300m`.
+    /// * `base_url` - Base URL ending in `/v1`, for example `http://127.0.0.1:11434/v1`.
+    /// * `model` - Embedding model id, for example `embeddinggemma`.
     /// * `timeout_ms` - Request timeout in milliseconds.
     /// * `dimensions` - Optional vector dimension count passed to compatible providers.
     #[must_use]
@@ -115,7 +115,7 @@ impl EmbeddingProvider for OpenAiCompatibleEmbeddingProvider {
                 format!(
                     "failed to call OpenAI-compatible embeddings endpoint: {url}\n\
 If the container is not running, start it with:\n\
-  docker compose -f docker-compose.embeddings.yml up -d\n\
+  docker compose -f docker-compose.embeddings.ollama.yml up -d\n\
 The configured model is: {}",
                     self.model
                 )

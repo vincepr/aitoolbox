@@ -4,11 +4,15 @@ services:
     container_name: knowledge-tei
     command:
       - --model-id
-      - google/embeddinggemma-300m
+      - onnx-community/Qwen3-Embedding-0.6B-ONNX
+      - --pooling
+      - last-token
+      - --max-batch-tokens
+      - "2048"
+      - --max-concurrent-requests
+      - "64"
     ports:
-      - "8080:80"
-    environment:
-      HF_TOKEN: ${HF_TOKEN:-}
+      - "18080:80"
     volumes:
       - hf_cache:/data
     healthcheck:

@@ -41,7 +41,7 @@ const DEFAULT_SOURCE_JSON: &str =
     version,
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
-    after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\n  KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER\n  KNOWLEDGE_CLI_EMBEDDINGS_MODEL\n  KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL\n  KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS\n  KNOWLEDGE_CLI_EMBEDDINGS_DIMENSIONS\nExamples (normal):\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock\n  knowledge-cli recall marketplaces --embeddings-provider openai-compatible --embeddings-model google/embeddinggemma-300m --embeddings-dimensions 768\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash\nExamples (edge-case overrides):\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'text' --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes"
+    after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\n  KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER\n  KNOWLEDGE_CLI_EMBEDDINGS_MODEL\n  KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL\n  KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS\n  KNOWLEDGE_CLI_EMBEDDINGS_DIMENSIONS\nExamples (normal):\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock\n  knowledge-cli recall marketplaces --embeddings-provider openai-compatible --embeddings-model embeddinggemma --embeddings-base-url http://127.0.0.1:11434/v1\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash\nExamples (edge-case overrides):\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'text' --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes"
 )]
 struct Cli {
     #[arg(
@@ -1275,9 +1275,19 @@ fn build_embedding_provider(config: &EffectiveConfig) -> Result<Box<dyn Embeddin
         .provider
         .eq_ignore_ascii_case("openai-compatible")
     {
+        let base_url = config
+            .embeddings
+            .base_url
+            .clone()
+            .context("embeddings.base_url is required for openai-compatible embeddings")?;
+        let model = config
+            .embeddings
+            .model
+            .clone()
+            .context("embeddings.model is required for openai-compatible embeddings")?;
         return Ok(Box::new(OpenAiCompatibleEmbeddingProvider::new(
-            config.embeddings.base_url.clone(),
-            config.embeddings.model.clone(),
+            base_url,
+            model,
             config.embeddings.timeout_ms,
             config.embeddings.dimensions,
         )));
@@ -1290,9 +1300,14 @@ fn build_embedding_provider(config: &EffectiveConfig) -> Result<Box<dyn Embeddin
 }
 
 fn embedding_cache_model(config: &EffectiveConfig) -> String {
+    let model = config
+        .embeddings
+        .model
+        .as_deref()
+        .expect("embedding model is required after provider validation");
     match config.embeddings.dimensions {
-        Some(dimensions) => format!("{}#dimensions={dimensions}", config.embeddings.model),
-        None => config.embeddings.model.clone(),
+        Some(dimensions) => format!("{model}#dimensions={dimensions}"),
+        None => model.to_string(),
     }
 }
 

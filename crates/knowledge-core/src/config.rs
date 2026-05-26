@@ -10,10 +10,7 @@ const MAX_PIPELINE_PROVIDER_BATCH_SIZE: u32 = 1024;
 const DEFAULT_PIPELINE_PROVIDER_TIMEOUT_MS: u64 = 3_000;
 const MAX_PIPELINE_PROVIDER_TIMEOUT_MS: u64 = 300_000;
 const DEFAULT_EMBEDDINGS_PROVIDER: &str = "none";
-const DEFAULT_EMBEDDINGS_MODEL: &str = "google/embeddinggemma-300m";
-const DEFAULT_EMBEDDINGS_BASE_URL: &str = "http://127.0.0.1:8080/v1";
 const DEFAULT_EMBEDDINGS_TIMEOUT_MS: u64 = 5_000;
-const DEFAULT_EMBEDDINGS_DIMENSIONS: u32 = 768;
 const MAX_EMBEDDINGS_TIMEOUT_MS: u64 = 300_000;
 const MAX_EMBEDDINGS_DIMENSIONS: u32 = 65_536;
 
@@ -32,8 +29,8 @@ pub struct RecallConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbeddingsConfig {
     pub provider: String,
-    pub model: String,
-    pub base_url: String,
+    pub model: Option<String>,
+    pub base_url: Option<String>,
     pub timeout_ms: u64,
     pub dimensions: Option<u32>,
 }
@@ -161,13 +158,11 @@ pub fn resolve(
     let embeddings_model = cli_overrides
         .embeddings_model
         .or(env_overrides.embeddings_model)
-        .or(file_cfg.embeddings.model)
-        .unwrap_or_else(|| DEFAULT_EMBEDDINGS_MODEL.to_string());
+        .or(file_cfg.embeddings.model);
     let embeddings_base_url = cli_overrides
         .embeddings_base_url
         .or(env_overrides.embeddings_base_url)
-        .or(file_cfg.embeddings.base_url)
-        .unwrap_or_else(|| DEFAULT_EMBEDDINGS_BASE_URL.to_string());
+        .or(file_cfg.embeddings.base_url);
     let embeddings_timeout_ms = cli_overrides
         .embeddings_timeout_ms
         .or(env_overrides.embeddings_timeout_ms)
@@ -176,17 +171,20 @@ pub fn resolve(
     let embeddings_dimensions = cli_overrides
         .embeddings_dimensions
         .or(env_overrides.embeddings_dimensions)
-        .or(file_cfg.embeddings.dimensions)
-        .or(Some(DEFAULT_EMBEDDINGS_DIMENSIONS));
+        .or(file_cfg.embeddings.dimensions);
 
     if embeddings_provider.trim().is_empty() {
         anyhow::bail!("invalid config: embeddings.provider must be a non-empty string");
     }
-    if embeddings_model.trim().is_empty() {
-        anyhow::bail!("invalid config: embeddings.model must be a non-empty string");
+    if let Some(model) = embeddings_model.as_deref() {
+        if model.trim().is_empty() {
+            anyhow::bail!("invalid config: embeddings.model must be a non-empty string");
+        }
     }
-    if embeddings_base_url.trim().is_empty() {
-        anyhow::bail!("invalid config: embeddings.base_url must be a non-empty string");
+    if let Some(base_url) = embeddings_base_url.as_deref() {
+        if base_url.trim().is_empty() {
+            anyhow::bail!("invalid config: embeddings.base_url must be a non-empty string");
+        }
     }
     if embeddings_timeout_ms == 0 || embeddings_timeout_ms > MAX_EMBEDDINGS_TIMEOUT_MS {
         anyhow::bail!(
@@ -197,6 +195,18 @@ pub fn resolve(
         if dimensions == 0 || dimensions > MAX_EMBEDDINGS_DIMENSIONS {
             anyhow::bail!(
                 "invalid config: embeddings.dimensions must be between 1 and {MAX_EMBEDDINGS_DIMENSIONS}, got {dimensions}"
+            );
+        }
+    }
+    if !embeddings_provider.eq_ignore_ascii_case("none") {
+        if embeddings_model.is_none() {
+            anyhow::bail!(
+                "invalid config: embeddings.model is required when embeddings.provider is not none"
+            );
+        }
+        if embeddings_base_url.is_none() {
+            anyhow::bail!(
+                "invalid config: embeddings.base_url is required when embeddings.provider is not none"
             );
         }
     }
