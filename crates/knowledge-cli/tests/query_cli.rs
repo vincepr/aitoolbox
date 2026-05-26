@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use predicates::str::contains;
 use rusqlite::{params, Connection};
+use std::env;
 use std::fs;
 use tempfile::tempdir;
 
@@ -1123,4 +1124,121 @@ fn version_prints_semver() {
         .assert()
         .success()
         .stdout(contains(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn openai_compatible_embeddings_index_and_recall_with_real_container() {
+    if env::var("KNOWLEDGE_CLI_EMBEDDINGS_INTEGRATION").as_deref() != Ok("1") {
+        return;
+    }
+
+    let temp = tempdir().unwrap();
+    let db = temp.path().join("knowledge.db");
+    let notes = temp.path().join("notes");
+    let source = temp.path().join("sources.json");
+    let base_url = env::var("KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8080/v1".to_string());
+    let model = env::var("KNOWLEDGE_CLI_EMBEDDINGS_MODEL")
+        .unwrap_or_else(|_| "google/embeddinggemma-300m".to_string());
+
+    fs::write(
+        &source,
+        r#"{
+          "$schema": "https://aitoolbox/schemas/entity.v1.json",
+          "entities": [
+            {
+              "canonical_name": "marketplaces-pricing",
+              "kind": "lesson",
+              "summary": "Marketplace pricing uses offer ladders and repricing guardrails.",
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": []
+            },
+            {
+              "canonical_name": "warehouse-fulfillment",
+              "kind": "lesson",
+              "summary": "Warehouse fulfillment tracks picking, packing, and parcel handoff.",
+              "namespace": null,
+              "package_name": null,
+              "repo_name": null,
+              "aliases": [],
+              "location": null,
+              "notes": []
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "init",
+            "--db",
+            db.to_str().unwrap(),
+            "--source-file",
+            source.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "embeddings-index",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "--embeddings-provider",
+            "openai-compatible",
+            "--embeddings-base-url",
+            &base_url,
+            "--embeddings-model",
+            &model,
+            "--embeddings-timeout-ms",
+            "120000",
+            "--embeddings-dimensions",
+            "768",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("embedded=2;skipped=0;total=2"));
+
+    let output = Command::cargo_bin("knowledge-cli")
+        .unwrap()
+        .args([
+            "recall",
+            "pricing guardrails",
+            "--db",
+            db.to_str().unwrap(),
+            "--notes-root",
+            notes.to_str().unwrap(),
+            "--recall-top-k",
+            "1",
+            "--embeddings-provider",
+            "openai-compatible",
+            "--embeddings-base-url",
+            &base_url,
+            "--embeddings-model",
+            &model,
+            "--embeddings-timeout-ms",
+            "120000",
+            "--embeddings-dimensions",
+            "768",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(output).unwrap();
+
+    assert!(
+        text.contains("marketplaces-pricing"),
+        "expected pricing recall hit, got: {text}"
+    );
 }

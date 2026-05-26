@@ -7,7 +7,7 @@ use knowledge_core::capture::{capture_issue, capture_lesson};
 use knowledge_core::config::{resolve as resolve_config, EffectiveConfig, ResolveOverrides};
 use knowledge_core::embed::{
     cosine_similarity, fingerprint_text, DisabledEmbeddingProvider, EmbeddingProvider,
-    OllamaEmbeddingProvider,
+    OpenAiCompatibleEmbeddingProvider,
 };
 use knowledge_core::import::{apply_source_file, apply_source_json};
 use knowledge_core::ingest::{enqueue_job, queue_status, run_once, DisabledProvider};
@@ -31,6 +31,7 @@ const EMBEDDINGS_PROVIDER_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER";
 const EMBEDDINGS_MODEL_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_MODEL";
 const EMBEDDINGS_BASE_URL_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL";
 const EMBEDDINGS_TIMEOUT_MS_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS";
+const EMBEDDINGS_DIMENSIONS_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_DIMENSIONS";
 const DEFAULT_SOURCE_JSON: &str =
     "{\n  \"$schema\": \"https://aitoolbox/schemas/entity.v1.json\",\n  \"entities\": []\n}\n";
 
@@ -40,7 +41,7 @@ const DEFAULT_SOURCE_JSON: &str =
     version,
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
-    after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\n  KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER\n  KNOWLEDGE_CLI_EMBEDDINGS_MODEL\n  KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL\n  KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS\nExamples (normal):\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock\n  knowledge-cli recall marketplaces --embeddings-provider ollama --embeddings-model embeddinggemma-300m-GGUF\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash\nExamples (edge-case overrides):\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'text' --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes"
+    after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\n  KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER\n  KNOWLEDGE_CLI_EMBEDDINGS_MODEL\n  KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL\n  KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS\n  KNOWLEDGE_CLI_EMBEDDINGS_DIMENSIONS\nExamples (normal):\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock\n  knowledge-cli recall marketplaces --embeddings-provider openai-compatible --embeddings-model google/embeddinggemma-300m --embeddings-dimensions 768\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash\nExamples (edge-case overrides):\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'text' --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes"
 )]
 struct Cli {
     #[arg(
@@ -58,7 +59,7 @@ struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Embeddings provider override: none|ollama"
+        help = "Embeddings provider override: none|openai-compatible"
     )]
     embeddings_provider: Option<String>,
     #[arg(long, global = true, help = "Embeddings model override")]
@@ -71,6 +72,8 @@ struct Cli {
         help = "Embeddings request timeout override in ms"
     )]
     embeddings_timeout_ms: Option<u64>,
+    #[arg(long, global = true, help = "Embeddings vector dimension override")]
+    embeddings_dimensions: Option<u32>,
     #[command(subcommand)]
     command: Command,
 }
@@ -397,6 +400,7 @@ fn run(cli: Cli) -> Result<()> {
         cli.embeddings_model.clone(),
         cli.embeddings_base_url.clone(),
         cli.embeddings_timeout_ms,
+        cli.embeddings_dimensions,
     )?;
 
     match cli.command {
@@ -557,6 +561,7 @@ fn resolve_effective_config(
     cli_embeddings_model: Option<String>,
     cli_embeddings_base_url: Option<String>,
     cli_embeddings_timeout_ms: Option<u64>,
+    cli_embeddings_dimensions: Option<u32>,
 ) -> Result<EffectiveConfig> {
     let config_path = if cli_config_path.is_some() {
         cli_config_path.clone()
@@ -586,6 +591,11 @@ fn resolve_effective_config(
         .map(|raw| raw.parse::<u64>())
         .transpose()
         .context("failed to parse KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS as u64")?;
+    let env_embeddings_dimensions = env::var(EMBEDDINGS_DIMENSIONS_ENV)
+        .ok()
+        .map(|raw| raw.parse::<u32>())
+        .transpose()
+        .context("failed to parse KNOWLEDGE_CLI_EMBEDDINGS_DIMENSIONS as u32")?;
 
     resolve_config(
         file_json.as_deref(),
@@ -595,6 +605,7 @@ fn resolve_effective_config(
             embeddings_model: env_embeddings_model,
             embeddings_base_url: env_embeddings_base_url,
             embeddings_timeout_ms: env_embeddings_timeout_ms,
+            embeddings_dimensions: env_embeddings_dimensions,
         },
         ResolveOverrides {
             recall_top_k: cli_recall_top_k,
@@ -602,6 +613,7 @@ fn resolve_effective_config(
             embeddings_model: cli_embeddings_model,
             embeddings_base_url: cli_embeddings_base_url,
             embeddings_timeout_ms: cli_embeddings_timeout_ms,
+            embeddings_dimensions: cli_embeddings_dimensions,
         },
     )
 }
@@ -1124,6 +1136,7 @@ fn handle_recall(
         return Ok(());
     }
 
+    let cache_model = embedding_cache_model(config);
     let query_embedding = provider.embed(query)?;
     let mut scored = Vec::with_capacity(docs.len());
 
@@ -1134,7 +1147,7 @@ fn handle_recall(
             doc.entity_id,
             &doc.text,
             &config.embeddings.provider,
-            &config.embeddings.model,
+            &cache_model,
         )?;
         let Some(score) = cosine_similarity(&query_embedding, &vector) else {
             continue;
@@ -1182,6 +1195,7 @@ fn handle_embeddings_index(
         return Ok(());
     }
 
+    let cache_model = embedding_cache_model(config);
     let mut embedded = 0_u64;
     let mut skipped = 0_u64;
     for doc in docs {
@@ -1190,7 +1204,7 @@ fn handle_embeddings_index(
                 &conn,
                 doc.entity_id,
                 &config.embeddings.provider,
-                &config.embeddings.model,
+                &cache_model,
             )?
         {
             skipped += 1;
@@ -1202,7 +1216,7 @@ fn handle_embeddings_index(
             doc.entity_id,
             &doc.text,
             &config.embeddings.provider,
-            &config.embeddings.model,
+            &cache_model,
         )?;
         embedded += 1;
     }
@@ -1226,6 +1240,7 @@ fn maybe_refresh_embeddings_for_all(
     let store = KnowledgeStore::new(conn);
     let notes = NoteStore::new(notes_root);
     let docs = store.recall_documents(&notes)?;
+    let cache_model = embedding_cache_model(config);
     for doc in docs {
         let _ = load_or_compute_embedding(
             conn,
@@ -1233,7 +1248,7 @@ fn maybe_refresh_embeddings_for_all(
             doc.entity_id,
             &doc.text,
             &config.embeddings.provider,
-            &config.embeddings.model,
+            &cache_model,
         )?;
     }
     Ok(())
@@ -1244,7 +1259,7 @@ fn require_enabled_embedding_provider(
 ) -> Result<Box<dyn EmbeddingProvider>> {
     if config.embeddings.provider.eq_ignore_ascii_case("none") {
         anyhow::bail!(
-            "embeddings provider is disabled; set --embeddings-provider ollama or KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER=ollama"
+            "embeddings provider is disabled; set --embeddings-provider openai-compatible or KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER=openai-compatible"
         );
     }
     build_embedding_provider(config)
@@ -1255,18 +1270,30 @@ fn build_embedding_provider(config: &EffectiveConfig) -> Result<Box<dyn Embeddin
         return Ok(Box::new(DisabledEmbeddingProvider));
     }
 
-    if config.embeddings.provider.eq_ignore_ascii_case("ollama") {
-        return Ok(Box::new(OllamaEmbeddingProvider::new(
+    if config
+        .embeddings
+        .provider
+        .eq_ignore_ascii_case("openai-compatible")
+    {
+        return Ok(Box::new(OpenAiCompatibleEmbeddingProvider::new(
             config.embeddings.base_url.clone(),
             config.embeddings.model.clone(),
             config.embeddings.timeout_ms,
+            config.embeddings.dimensions,
         )));
     }
 
     anyhow::bail!(
-        "unsupported embeddings provider: {} (supported: none, ollama)",
+        "unsupported embeddings provider: {} (supported: none, openai-compatible)",
         config.embeddings.provider
     )
+}
+
+fn embedding_cache_model(config: &EffectiveConfig) -> String {
+    match config.embeddings.dimensions {
+        Some(dimensions) => format!("{}#dimensions={dimensions}", config.embeddings.model),
+        None => config.embeddings.model.clone(),
+    }
 }
 
 fn load_or_compute_embedding(

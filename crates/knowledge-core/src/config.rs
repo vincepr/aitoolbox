@@ -10,10 +10,12 @@ const MAX_PIPELINE_PROVIDER_BATCH_SIZE: u32 = 1024;
 const DEFAULT_PIPELINE_PROVIDER_TIMEOUT_MS: u64 = 3_000;
 const MAX_PIPELINE_PROVIDER_TIMEOUT_MS: u64 = 300_000;
 const DEFAULT_EMBEDDINGS_PROVIDER: &str = "none";
-const DEFAULT_EMBEDDINGS_MODEL: &str = "embeddinggemma-300m-GGUF";
-const DEFAULT_EMBEDDINGS_BASE_URL: &str = "http://127.0.0.1:11434";
+const DEFAULT_EMBEDDINGS_MODEL: &str = "google/embeddinggemma-300m";
+const DEFAULT_EMBEDDINGS_BASE_URL: &str = "http://127.0.0.1:8080/v1";
 const DEFAULT_EMBEDDINGS_TIMEOUT_MS: u64 = 5_000;
+const DEFAULT_EMBEDDINGS_DIMENSIONS: u32 = 768;
 const MAX_EMBEDDINGS_TIMEOUT_MS: u64 = 300_000;
+const MAX_EMBEDDINGS_DIMENSIONS: u32 = 65_536;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveConfig {
@@ -33,6 +35,7 @@ pub struct EmbeddingsConfig {
     pub model: String,
     pub base_url: String,
     pub timeout_ms: u64,
+    pub dimensions: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +61,7 @@ pub struct ResolveOverrides {
     pub embeddings_model: Option<String>,
     pub embeddings_base_url: Option<String>,
     pub embeddings_timeout_ms: Option<u64>,
+    pub embeddings_dimensions: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -81,6 +85,7 @@ struct FileEmbeddingsConfig {
     model: Option<String>,
     base_url: Option<String>,
     timeout_ms: Option<u64>,
+    dimensions: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -115,6 +120,8 @@ struct FilePipelineProviderConfig {
 /// * `cli_embeddings_base_url` - Optional embeddings base URL from CLI.
 /// * `env_embeddings_timeout_ms` - Optional embeddings timeout in ms from environment.
 /// * `cli_embeddings_timeout_ms` - Optional embeddings timeout in ms from CLI.
+/// * `env_embeddings_dimensions` - Optional embeddings vector dimension count from environment.
+/// * `cli_embeddings_dimensions` - Optional embeddings vector dimension count from CLI.
 ///
 /// # Returns
 ///
@@ -166,6 +173,11 @@ pub fn resolve(
         .or(env_overrides.embeddings_timeout_ms)
         .or(file_cfg.embeddings.timeout_ms)
         .unwrap_or(DEFAULT_EMBEDDINGS_TIMEOUT_MS);
+    let embeddings_dimensions = cli_overrides
+        .embeddings_dimensions
+        .or(env_overrides.embeddings_dimensions)
+        .or(file_cfg.embeddings.dimensions)
+        .or(Some(DEFAULT_EMBEDDINGS_DIMENSIONS));
 
     if embeddings_provider.trim().is_empty() {
         anyhow::bail!("invalid config: embeddings.provider must be a non-empty string");
@@ -180,6 +192,13 @@ pub fn resolve(
         anyhow::bail!(
             "invalid config: embeddings.timeout_ms must be between 1 and {MAX_EMBEDDINGS_TIMEOUT_MS}, got {embeddings_timeout_ms}"
         );
+    }
+    if let Some(dimensions) = embeddings_dimensions {
+        if dimensions == 0 || dimensions > MAX_EMBEDDINGS_DIMENSIONS {
+            anyhow::bail!(
+                "invalid config: embeddings.dimensions must be between 1 and {MAX_EMBEDDINGS_DIMENSIONS}, got {dimensions}"
+            );
+        }
     }
 
     let max_attempts = file_cfg
@@ -247,6 +266,7 @@ pub fn resolve(
             model: embeddings_model,
             base_url: embeddings_base_url,
             timeout_ms: embeddings_timeout_ms,
+            dimensions: embeddings_dimensions,
         },
         pipeline: PipelineConfig {
             enabled: file_cfg.pipeline.enabled.unwrap_or(false),

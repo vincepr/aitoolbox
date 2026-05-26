@@ -1,30 +1,21 @@
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: knowledge-ollama
-    restart: unless-stopped
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    container_name: knowledge-tei
+    command:
+      - --model-id
+      - google/embeddinggemma-300m
     ports:
-      - "11434:11434"
+      - "8080:80"
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
     volumes:
-      - ollama_data:/root/.ollama
+      - hf_cache:/data
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
 
-  ollama-model-init:
-    image: ollama/ollama:latest
-    depends_on:
-      ollama:
-        condition: service_healthy
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - >
-        ollama pull embeddinggemma-300m-GGUF
-    restart: "no"
-
 volumes:
-  ollama_data:
+  hf_cache:

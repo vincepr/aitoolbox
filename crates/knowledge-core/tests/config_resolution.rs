@@ -33,10 +33,18 @@ fn pipeline_defaults_are_disabled_and_typed() {
 }
 
 #[test]
-fn embeddings_defaults_are_none_and_ollama_compatible() {
+fn embeddings_defaults_are_none_and_openai_compatible() {
     let file_cfg = r#"{}"#;
     let effective = resolve_for_test(file_cfg, None, None).expect("defaults resolve");
     assert_eq!(effective.embeddings.provider, "none");
-    assert_eq!(effective.embeddings.model, "embeddinggemma-300m-GGUF");
-    assert_eq!(effective.embeddings.base_url, "http://127.0.0.1:11434");
+    assert_eq!(effective.embeddings.model, "google/embeddinggemma-300m");
+    assert_eq!(effective.embeddings.base_url, "http://127.0.0.1:8080/v1");
+    assert_eq!(effective.embeddings.dimensions, Some(768));
+}
+
+#[test]
+fn invalid_embeddings_dimensions_are_rejected() {
+    let file_cfg = r#"{"embeddings":{"dimensions":0}}"#;
+    let err = resolve_for_test(file_cfg, None, None).unwrap_err();
+    assert!(err.to_string().contains("embeddings.dimensions"));
 }

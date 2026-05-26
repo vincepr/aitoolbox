@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Resolved embedding runtime options used by CLI and provider adapters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbeddingRuntime {
-    /// Provider selector: `none` or `ollama`.
+    /// Provider selector: `none` or `openai-compatible`.
     pub provider: String,
     /// Model identifier passed to provider.
     pub model: String,
@@ -12,6 +12,8 @@ pub struct EmbeddingRuntime {
     pub base_url: Option<String>,
     /// Provider timeout in milliseconds.
     pub timeout_ms: u64,
+    /// Optional output vector dimension count.
+    pub dimensions: Option<u32>,
 }
 
 /// Text + embedding pair used during semantic ranking.
@@ -45,74 +47,96 @@ impl EmbeddingProvider for DisabledEmbeddingProvider {
     }
 }
 
-/// Ollama HTTP embedding provider.
+/// OpenAI-compatible HTTP embedding provider.
 #[derive(Debug, Clone)]
-pub struct OllamaEmbeddingProvider {
+pub struct OpenAiCompatibleEmbeddingProvider {
     base_url: String,
     model: String,
     timeout_ms: u64,
+    dimensions: Option<u32>,
 }
 
-impl OllamaEmbeddingProvider {
-    /// Creates a new Ollama embedding provider.
+impl OpenAiCompatibleEmbeddingProvider {
+    /// Creates a new OpenAI-compatible embedding provider.
     ///
     /// # Arguments
     ///
-    /// * `base_url` - Ollama base URL (for example `http://127.0.0.1:11434`).
-    /// * `model` - Embedding model id, for example `embeddinggemma-300m-GGUF`.
+    /// * `base_url` - Base URL ending in `/v1`, for example `http://127.0.0.1:8080/v1`.
+    /// * `model` - Embedding model id, for example `google/embeddinggemma-300m`.
     /// * `timeout_ms` - Request timeout in milliseconds.
+    /// * `dimensions` - Optional vector dimension count passed to compatible providers.
     #[must_use]
-    pub fn new(base_url: String, model: String, timeout_ms: u64) -> Self {
+    pub fn new(base_url: String, model: String, timeout_ms: u64, dimensions: Option<u32>) -> Self {
         Self {
             base_url,
             model,
             timeout_ms,
+            dimensions,
         }
     }
 }
 
 #[derive(Debug, Serialize)]
-struct OllamaEmbeddingsRequest<'a> {
+struct OpenAiEmbeddingRequest<'a> {
     model: &'a str,
-    prompt: &'a str,
+    input: &'a str,
+    encoding_format: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dimensions: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
-struct OllamaEmbeddingsResponse {
+struct OpenAiEmbeddingResponse {
+    data: Vec<OpenAiEmbeddingData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiEmbeddingData {
     embedding: Vec<f32>,
 }
 
-impl EmbeddingProvider for OllamaEmbeddingProvider {
+impl EmbeddingProvider for OpenAiCompatibleEmbeddingProvider {
     fn embed(&self, text: &str) -> Result<Vec<f32>> {
-        let url = format!("{}/api/embeddings", self.base_url.trim_end_matches('/'));
-        let payload = OllamaEmbeddingsRequest {
+        let url = format!("{}/embeddings", self.base_url.trim_end_matches('/'));
+        let payload = OpenAiEmbeddingRequest {
             model: &self.model,
-            prompt: text,
+            input: text,
+            encoding_format: "float",
+            dimensions: self.dimensions,
         };
 
         let response = ureq::post(&url)
             .timeout(std::time::Duration::from_millis(self.timeout_ms))
-            .send_json(serde_json::to_value(payload).context("failed to serialize Ollama request")?)
+            .send_json(
+                serde_json::to_value(payload)
+                    .context("failed to serialize OpenAI-compatible embeddings request")?,
+            )
             .with_context(|| {
                 format!(
-                    "failed to call Ollama embeddings endpoint: {url}\n\
+                    "failed to call OpenAI-compatible embeddings endpoint: {url}\n\
 If the container is not running, start it with:\n\
-  docker run -d --name knowledge-ollama -p 11434:11434 ollama/ollama\n\
-Then pull a model once:\n\
-  docker exec -it knowledge-ollama ollama pull {}",
+  docker compose -f docker-compose.embeddings.yml up -d\n\
+The configured model is: {}",
                     self.model
                 )
             })?;
 
-        let parsed: OllamaEmbeddingsResponse = response
+        let parsed: OpenAiEmbeddingResponse = response
             .into_json()
-            .context("failed to parse Ollama embeddings response JSON")?;
+            .context("failed to parse OpenAI-compatible embeddings response JSON")?;
 
-        if parsed.embedding.is_empty() {
-            anyhow::bail!("Ollama returned an empty embedding vector")
+        let embedding = parsed
+            .data
+            .into_iter()
+            .next()
+            .map(|item| item.embedding)
+            .unwrap_or_default();
+
+        if embedding.is_empty() {
+            anyhow::bail!("OpenAI-compatible provider returned an empty embedding vector")
         }
 
-        Ok(parsed.embedding)
+        Ok(embedding)
     }
 }
 
