@@ -4,14 +4,18 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::generate;
 use knowledge_core::audit::list_entity_history;
 use knowledge_core::capture::{capture_issue, capture_lesson};
-use knowledge_core::config::{resolve as resolve_config, EffectiveConfig};
+use knowledge_core::config::{resolve as resolve_config, EffectiveConfig, ResolveOverrides};
+use knowledge_core::embed::{
+    cosine_similarity, fingerprint_text, DisabledEmbeddingProvider, EmbeddingProvider,
+    OllamaEmbeddingProvider,
+};
 use knowledge_core::import::{apply_source_file, apply_source_json};
 use knowledge_core::ingest::{enqueue_job, queue_status, run_once, DisabledProvider};
 use knowledge_core::input_schema::{validate_payload, InputSchemaKind};
 use knowledge_core::notes::NoteStore;
 use knowledge_core::schema::{bootstrap, schema_version, verify_schema};
 use knowledge_core::store::KnowledgeStore;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use std::env;
 use std::fs;
@@ -23,6 +27,10 @@ const NOTES_ROOT_ENV: &str = "KNOWLEDGE_CLI_NOTES_ROOT";
 const SOURCE_FILE_ENV: &str = "KNOWLEDGE_CLI_SOURCE_FILE";
 const CONFIG_FILE_ENV: &str = "KNOWLEDGE_CLI_CONFIG_FILE";
 const RECALL_TOP_K_ENV: &str = "KNOWLEDGE_CLI_RECALL_TOP_K";
+const EMBEDDINGS_PROVIDER_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER";
+const EMBEDDINGS_MODEL_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_MODEL";
+const EMBEDDINGS_BASE_URL_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL";
+const EMBEDDINGS_TIMEOUT_MS_ENV: &str = "KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS";
 const DEFAULT_SOURCE_JSON: &str =
     "{\n  \"$schema\": \"https://aitoolbox/schemas/entity.v1.json\",\n  \"entities\": []\n}\n";
 
@@ -32,7 +40,7 @@ const DEFAULT_SOURCE_JSON: &str =
     version,
     about = "Query and capture local engineering knowledge",
     long_about = "Local-first knowledge system CLI backed by SQLite and compact Markdown notes.\nUse exact lookup for known entities and explicit capture commands for lessons and issues.",
-    after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\nExamples (normal):\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash\nExamples (edge-case overrides):\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'text' --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes"
+    after_help = "Environment fallback order: CLI flag -> env var -> user-level home base.\n  KNOWLEDGE_CLI_DB\n  KNOWLEDGE_CLI_NOTES_ROOT\n  KNOWLEDGE_CLI_SOURCE_FILE\n  KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER\n  KNOWLEDGE_CLI_EMBEDDINGS_MODEL\n  KNOWLEDGE_CLI_EMBEDDINGS_BASE_URL\n  KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS\nExamples (normal):\n  knowledge-cli quickstart\n  knowledge-cli init --source-file config/knowledge/sources.example.json\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock\n  knowledge-cli recall marketplaces --embeddings-provider ollama --embeddings-model embeddinggemma-300m-GGUF\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'Global state leaked between tests'\n  knowledge-cli capture-issue --slug stale-mapping-refresh --body 'Need automatic refresh for stale repository paths'\n  knowledge-cli completions bash > ~/.local/share/bash-completion/completions/knowledge-cli\n  knowledge-cli alias bash\nExamples (edge-case overrides):\n  knowledge-cli get frameworkname-marketplaces-jobs-pricestock --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes\n  knowledge-cli capture-lesson --slug avoid-global-singleton --body 'text' --db /tmp/knowledge.sqlite3 --notes-root /tmp/notes"
 )]
 struct Cli {
     #[arg(
@@ -47,6 +55,22 @@ struct Cli {
         help = "Recall top-k override (highest precedence)"
     )]
     recall_top_k: Option<u32>,
+    #[arg(
+        long,
+        global = true,
+        help = "Embeddings provider override: none|ollama"
+    )]
+    embeddings_provider: Option<String>,
+    #[arg(long, global = true, help = "Embeddings model override")]
+    embeddings_model: Option<String>,
+    #[arg(long, global = true, help = "Embeddings provider base URL override")]
+    embeddings_base_url: Option<String>,
+    #[arg(
+        long,
+        global = true,
+        help = "Embeddings request timeout override in ms"
+    )]
+    embeddings_timeout_ms: Option<u64>,
     #[command(subcommand)]
     command: Command,
 }
@@ -253,6 +277,35 @@ enum Command {
         #[arg(long, help = "Path to the SQLite knowledge database")]
         db: Option<Utf8PathBuf>,
     },
+    #[command(about = "Run semantic recall using embeddings")]
+    Recall {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        notes_root: Option<Utf8PathBuf>,
+        #[arg(help = "Free-form recall query")]
+        query: String,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100), help = "Maximum recall rows")]
+        top_k: Option<u32>,
+    },
+    #[command(about = "Generate or refresh cached embeddings for indexed entities")]
+    EmbeddingsIndex {
+        #[arg(long, help = "Path to the SQLite knowledge database")]
+        db: Option<Utf8PathBuf>,
+        #[arg(long, help = "Root directory containing compact knowledge notes")]
+        notes_root: Option<Utf8PathBuf>,
+        #[arg(
+            long,
+            help = "Force recomputation even when cached fingerprint matches"
+        )]
+        reembed: bool,
+    },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum EmbedRefreshMode {
+    MissingOnly,
+    ForceAll,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -306,6 +359,13 @@ struct CapturePayload {
     body: String,
 }
 
+struct CaptureInput {
+    slug: Option<String>,
+    body: Option<String>,
+    input_file: Option<Utf8PathBuf>,
+    input_json: Option<String>,
+}
+
 fn load_json_input(
     input_file: Option<Utf8PathBuf>,
     input_json: Option<String>,
@@ -330,7 +390,14 @@ fn main() -> Result<()> {
 
 fn run(cli: Cli) -> Result<()> {
     // Validate config before command execution so invalid settings fail fast.
-    let _effective_config = resolve_effective_config(&cli.config_file, cli.recall_top_k)?;
+    let effective_config = resolve_effective_config(
+        &cli.config_file,
+        cli.recall_top_k,
+        cli.embeddings_provider.clone(),
+        cli.embeddings_model.clone(),
+        cli.embeddings_base_url.clone(),
+        cli.embeddings_timeout_ms,
+    )?;
 
     match cli.command {
         Command::Init {
@@ -338,7 +405,14 @@ fn run(cli: Cli) -> Result<()> {
             source_file,
             source_json,
             print_schema,
-        } => handle_init(resolve_db_path(db)?, source_file, source_json, print_schema),
+        } => handle_init(
+            resolve_db_path(db)?,
+            source_file,
+            source_json,
+            print_schema,
+            resolve_notes_root(None)?,
+            &effective_config,
+        ),
         Command::Quickstart {
             db,
             notes_root,
@@ -347,6 +421,7 @@ fn run(cli: Cli) -> Result<()> {
             resolve_db_path(db)?,
             resolve_notes_root(notes_root)?,
             resolve_source_file(source_file)?,
+            &effective_config,
         ),
         Command::Get {
             db,
@@ -382,11 +457,14 @@ fn run(cli: Cli) -> Result<()> {
         } => handle_capture_lesson(
             resolve_db_path(db)?,
             resolve_notes_root(notes_root)?,
-            slug,
-            body,
-            input_file,
-            input_json,
+            CaptureInput {
+                slug,
+                body,
+                input_file,
+                input_json,
+            },
             print_schema,
+            &effective_config,
         ),
         Command::CaptureIssue {
             db,
@@ -399,11 +477,14 @@ fn run(cli: Cli) -> Result<()> {
         } => handle_capture_issue(
             resolve_db_path(db)?,
             resolve_notes_root(notes_root)?,
-            slug,
-            body,
-            input_file,
-            input_json,
+            CaptureInput {
+                slug,
+                body,
+                input_file,
+                input_json,
+            },
             print_schema,
+            &effective_config,
         ),
         Command::Completions { shell } => {
             handle_completions(shell);
@@ -435,17 +516,47 @@ fn run(cli: Cli) -> Result<()> {
             resolve_db_path(db)?,
             &dedupe_key,
             payload.as_deref(),
-            max_attempts.unwrap_or(_effective_config.pipeline.max_attempts),
+            max_attempts.unwrap_or(effective_config.pipeline.max_attempts),
             print_schema,
         ),
         Command::PipelineRunOnce { db } => handle_pipeline_run_once(resolve_db_path(db)?),
         Command::PipelineStatus { db } => handle_pipeline_status(resolve_db_path(db)?),
+        Command::Recall {
+            db,
+            notes_root,
+            query,
+            top_k,
+        } => handle_recall(
+            resolve_db_path(db)?,
+            resolve_notes_root(notes_root)?,
+            &query,
+            top_k.unwrap_or(effective_config.recall.top_k),
+            &effective_config,
+        ),
+        Command::EmbeddingsIndex {
+            db,
+            notes_root,
+            reembed,
+        } => handle_embeddings_index(
+            resolve_db_path(db)?,
+            resolve_notes_root(notes_root)?,
+            if reembed {
+                EmbedRefreshMode::ForceAll
+            } else {
+                EmbedRefreshMode::MissingOnly
+            },
+            &effective_config,
+        ),
     }
 }
 
 fn resolve_effective_config(
     cli_config_path: &Option<Utf8PathBuf>,
     cli_recall_top_k: Option<u32>,
+    cli_embeddings_provider: Option<String>,
+    cli_embeddings_model: Option<String>,
+    cli_embeddings_base_url: Option<String>,
+    cli_embeddings_timeout_ms: Option<u64>,
 ) -> Result<EffectiveConfig> {
     let config_path = if cli_config_path.is_some() {
         cli_config_path.clone()
@@ -467,7 +578,32 @@ fn resolve_effective_config(
         .transpose()
         .context("failed to parse KNOWLEDGE_CLI_RECALL_TOP_K as u32")?;
 
-    resolve_config(file_json.as_deref(), env_recall_top_k, cli_recall_top_k)
+    let env_embeddings_provider = env::var(EMBEDDINGS_PROVIDER_ENV).ok();
+    let env_embeddings_model = env::var(EMBEDDINGS_MODEL_ENV).ok();
+    let env_embeddings_base_url = env::var(EMBEDDINGS_BASE_URL_ENV).ok();
+    let env_embeddings_timeout_ms = env::var(EMBEDDINGS_TIMEOUT_MS_ENV)
+        .ok()
+        .map(|raw| raw.parse::<u64>())
+        .transpose()
+        .context("failed to parse KNOWLEDGE_CLI_EMBEDDINGS_TIMEOUT_MS as u64")?;
+
+    resolve_config(
+        file_json.as_deref(),
+        ResolveOverrides {
+            recall_top_k: env_recall_top_k,
+            embeddings_provider: env_embeddings_provider,
+            embeddings_model: env_embeddings_model,
+            embeddings_base_url: env_embeddings_base_url,
+            embeddings_timeout_ms: env_embeddings_timeout_ms,
+        },
+        ResolveOverrides {
+            recall_top_k: cli_recall_top_k,
+            embeddings_provider: cli_embeddings_provider,
+            embeddings_model: cli_embeddings_model,
+            embeddings_base_url: cli_embeddings_base_url,
+            embeddings_timeout_ms: cli_embeddings_timeout_ms,
+        },
+    )
 }
 
 fn resolve_db_path(cli_value: Option<Utf8PathBuf>) -> Result<Utf8PathBuf> {
@@ -567,6 +703,8 @@ fn handle_init(
     source_file: Option<Utf8PathBuf>,
     source_json: Option<String>,
     print_schema: bool,
+    notes_root: Utf8PathBuf,
+    config: &EffectiveConfig,
 ) -> Result<()> {
     if print_schema {
         println!("{}", InputSchemaKind::Entity.schema_text());
@@ -587,6 +725,8 @@ fn handle_init(
         )
     }
 
+    maybe_refresh_embeddings_for_all(&conn, notes_root, config)?;
+
     Ok(())
 }
 
@@ -594,6 +734,7 @@ fn handle_quickstart(
     db: Utf8PathBuf,
     notes_root: Utf8PathBuf,
     source_file: Utf8PathBuf,
+    config: &EffectiveConfig,
 ) -> Result<()> {
     fs::create_dir_all(notes_root.as_std_path())
         .with_context(|| format!("failed to create notes directory: {notes_root}"))?;
@@ -608,7 +749,14 @@ fn handle_quickstart(
             .with_context(|| format!("failed to write default source file: {source_file}"))?;
     }
 
-    handle_init(db.clone(), Some(source_file.clone()), None, false)?;
+    handle_init(
+        db.clone(),
+        Some(source_file.clone()),
+        None,
+        false,
+        notes_root.clone(),
+        config,
+    )?;
 
     println!("Database ready: {db}");
     println!("Notes root ready: {notes_root}");
@@ -693,54 +841,52 @@ fn parse_get_entity(
 fn handle_capture_lesson(
     db: Utf8PathBuf,
     notes_root: Utf8PathBuf,
-    slug: Option<String>,
-    body: Option<String>,
-    input_file: Option<Utf8PathBuf>,
-    input_json: Option<String>,
+    input: CaptureInput,
     print_schema: bool,
+    config: &EffectiveConfig,
 ) -> Result<()> {
     if print_schema {
         println!("{}", InputSchemaKind::Lesson.schema_text());
         return Ok(());
     }
     let payload = parse_capture_payload(
-        slug,
-        body,
-        input_file,
-        input_json,
+        input.slug,
+        input.body,
+        input.input_file,
+        input.input_json,
         "capture-lesson",
         InputSchemaKind::Lesson,
     )?;
     let conn = open_bootstrapped_db(&db)?;
-    let notes = NoteStore::new(notes_root);
+    let notes = NoteStore::new(notes_root.clone());
     capture_lesson(&conn, &notes, &payload.slug, &payload.body)?;
+    maybe_refresh_embeddings_for_all(&conn, notes_root, config)?;
     Ok(())
 }
 
 fn handle_capture_issue(
     db: Utf8PathBuf,
     notes_root: Utf8PathBuf,
-    slug: Option<String>,
-    body: Option<String>,
-    input_file: Option<Utf8PathBuf>,
-    input_json: Option<String>,
+    input: CaptureInput,
     print_schema: bool,
+    config: &EffectiveConfig,
 ) -> Result<()> {
     if print_schema {
         println!("{}", InputSchemaKind::Issue.schema_text());
         return Ok(());
     }
     let payload = parse_capture_payload(
-        slug,
-        body,
-        input_file,
-        input_json,
+        input.slug,
+        input.body,
+        input.input_file,
+        input.input_json,
         "capture-issue",
         InputSchemaKind::Issue,
     )?;
     let conn = open_bootstrapped_db(&db)?;
-    let notes = NoteStore::new(notes_root);
+    let notes = NoteStore::new(notes_root.clone());
     capture_issue(&conn, &notes, &payload.slug, &payload.body)?;
+    maybe_refresh_embeddings_for_all(&conn, notes_root, config)?;
     Ok(())
 }
 
@@ -951,6 +1097,244 @@ fn handle_pipeline_status(db: Utf8PathBuf) -> Result<()> {
         status.unknown_notes
     );
     Ok(())
+}
+
+#[derive(Debug)]
+struct ScoredRecallRow {
+    score: f32,
+    entity_id: i64,
+    canonical_name: String,
+    kind: String,
+}
+
+fn handle_recall(
+    db: Utf8PathBuf,
+    notes_root: Utf8PathBuf,
+    query: &str,
+    top_k: u32,
+    config: &EffectiveConfig,
+) -> Result<()> {
+    let provider = require_enabled_embedding_provider(config)?;
+    let conn = open_bootstrapped_db(&db)?;
+    let store = KnowledgeStore::new(&conn);
+    let notes = NoteStore::new(notes_root);
+    let docs = store.recall_documents(&notes)?;
+    if docs.is_empty() {
+        println!("no_recall_documents=true");
+        return Ok(());
+    }
+
+    let query_embedding = provider.embed(query)?;
+    let mut scored = Vec::with_capacity(docs.len());
+
+    for doc in docs {
+        let vector = load_or_compute_embedding(
+            &conn,
+            &*provider,
+            doc.entity_id,
+            &doc.text,
+            &config.embeddings.provider,
+            &config.embeddings.model,
+        )?;
+        let Some(score) = cosine_similarity(&query_embedding, &vector) else {
+            continue;
+        };
+        scored.push(ScoredRecallRow {
+            score,
+            entity_id: doc.entity_id,
+            canonical_name: doc.canonical_name,
+            kind: doc.kind,
+        });
+    }
+
+    scored.sort_by(|left, right| {
+        right
+            .score
+            .total_cmp(&left.score)
+            .then(left.canonical_name.cmp(&right.canonical_name))
+            .then(left.entity_id.cmp(&right.entity_id))
+    });
+    scored.truncate(top_k as usize);
+
+    for row in scored {
+        println!(
+            "{:.6}\t{}\t{}\t{}",
+            row.score, row.entity_id, row.canonical_name, row.kind
+        );
+    }
+
+    Ok(())
+}
+
+fn handle_embeddings_index(
+    db: Utf8PathBuf,
+    notes_root: Utf8PathBuf,
+    mode: EmbedRefreshMode,
+    config: &EffectiveConfig,
+) -> Result<()> {
+    let provider = require_enabled_embedding_provider(config)?;
+    let conn = open_bootstrapped_db(&db)?;
+    let store = KnowledgeStore::new(&conn);
+    let notes = NoteStore::new(notes_root);
+    let docs = store.recall_documents(&notes)?;
+    if docs.is_empty() {
+        println!("embedded=0;skipped=0;total=0");
+        return Ok(());
+    }
+
+    let mut embedded = 0_u64;
+    let mut skipped = 0_u64;
+    for doc in docs {
+        if mode == EmbedRefreshMode::MissingOnly
+            && has_cached_embedding(
+                &conn,
+                doc.entity_id,
+                &config.embeddings.provider,
+                &config.embeddings.model,
+            )?
+        {
+            skipped += 1;
+            continue;
+        }
+        let _ = load_or_compute_embedding(
+            &conn,
+            &*provider,
+            doc.entity_id,
+            &doc.text,
+            &config.embeddings.provider,
+            &config.embeddings.model,
+        )?;
+        embedded += 1;
+    }
+
+    println!(
+        "embedded={embedded};skipped={skipped};total={}",
+        embedded + skipped
+    );
+    Ok(())
+}
+
+fn maybe_refresh_embeddings_for_all(
+    conn: &Connection,
+    notes_root: Utf8PathBuf,
+    config: &EffectiveConfig,
+) -> Result<()> {
+    if config.embeddings.provider.eq_ignore_ascii_case("none") {
+        return Ok(());
+    }
+    let provider = build_embedding_provider(config)?;
+    let store = KnowledgeStore::new(conn);
+    let notes = NoteStore::new(notes_root);
+    let docs = store.recall_documents(&notes)?;
+    for doc in docs {
+        let _ = load_or_compute_embedding(
+            conn,
+            &*provider,
+            doc.entity_id,
+            &doc.text,
+            &config.embeddings.provider,
+            &config.embeddings.model,
+        )?;
+    }
+    Ok(())
+}
+
+fn require_enabled_embedding_provider(
+    config: &EffectiveConfig,
+) -> Result<Box<dyn EmbeddingProvider>> {
+    if config.embeddings.provider.eq_ignore_ascii_case("none") {
+        anyhow::bail!(
+            "embeddings provider is disabled; set --embeddings-provider ollama or KNOWLEDGE_CLI_EMBEDDINGS_PROVIDER=ollama"
+        );
+    }
+    build_embedding_provider(config)
+}
+
+fn build_embedding_provider(config: &EffectiveConfig) -> Result<Box<dyn EmbeddingProvider>> {
+    if config.embeddings.provider.eq_ignore_ascii_case("none") {
+        return Ok(Box::new(DisabledEmbeddingProvider));
+    }
+
+    if config.embeddings.provider.eq_ignore_ascii_case("ollama") {
+        return Ok(Box::new(OllamaEmbeddingProvider::new(
+            config.embeddings.base_url.clone(),
+            config.embeddings.model.clone(),
+            config.embeddings.timeout_ms,
+        )));
+    }
+
+    anyhow::bail!(
+        "unsupported embeddings provider: {} (supported: none, ollama)",
+        config.embeddings.provider
+    )
+}
+
+fn load_or_compute_embedding(
+    conn: &Connection,
+    provider: &dyn EmbeddingProvider,
+    entity_id: i64,
+    text: &str,
+    provider_name: &str,
+    model: &str,
+) -> Result<Vec<f32>> {
+    let fingerprint = fingerprint_text(text);
+    let cached = conn
+        .query_row(
+            "
+            SELECT source_fingerprint, vector_json
+            FROM entity_embeddings
+            WHERE entity_id = ?1 AND provider = ?2 AND model = ?3
+            LIMIT 1
+            ",
+            (entity_id, provider_name, model),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()?;
+
+    if let Some((cached_fingerprint, vector_json)) = cached {
+        if cached_fingerprint == fingerprint {
+            let vector = serde_json::from_str::<Vec<f32>>(&vector_json)
+                .context("failed to parse cached embedding vector JSON")?;
+            return Ok(vector);
+        }
+    }
+
+    let vector = provider.embed(text)?;
+    let vector_json = serde_json::to_string(&vector).context("failed to serialize embedding")?;
+    conn.execute(
+        "
+        INSERT INTO entity_embeddings (entity_id, provider, model, source_fingerprint, vector_json)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        ON CONFLICT(entity_id, provider, model) DO UPDATE SET
+            source_fingerprint = excluded.source_fingerprint,
+            vector_json = excluded.vector_json,
+            updated_at = CURRENT_TIMESTAMP
+        ",
+        (entity_id, provider_name, model, fingerprint, vector_json),
+    )?;
+
+    Ok(vector)
+}
+
+fn has_cached_embedding(
+    conn: &Connection,
+    entity_id: i64,
+    provider_name: &str,
+    model: &str,
+) -> Result<bool> {
+    let exists = conn
+        .query_row(
+            "
+            SELECT 1
+            FROM entity_embeddings
+            WHERE entity_id = ?1 AND provider = ?2 AND model = ?3
+            LIMIT 1
+            ",
+            (entity_id, provider_name, model),
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+    Ok(exists.is_some())
 }
 
 impl From<CompletionShell> for clap_complete::Shell {

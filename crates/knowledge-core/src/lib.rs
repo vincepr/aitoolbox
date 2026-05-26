@@ -4,6 +4,8 @@ pub mod audit;
 pub mod capture;
 /// Typed runtime configuration resolution and validation.
 pub mod config;
+/// Embedding provider interfaces and similarity utilities.
+pub mod embed;
 /// Source import APIs for loading entities from JSON.
 pub mod import;
 /// Raw-first background ingestion primitives and provider hooks.

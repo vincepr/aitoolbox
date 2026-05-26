@@ -147,6 +147,19 @@ pub struct RelatedEntityPage {
     pub rows: Vec<RelatedEntityRecord>,
 }
 
+/// Source document used for embedding recall.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecallDocument {
+    /// SQLite entity id.
+    pub entity_id: i64,
+    /// Canonical identifier.
+    pub canonical_name: String,
+    /// Entity kind.
+    pub kind: String,
+    /// Compact text used for embedding.
+    pub text: String,
+}
+
 /// Extracts the first non-heading paragraph from markdown.
 ///
 /// # Arguments
@@ -780,6 +793,74 @@ impl<'a> KnowledgeStore<'a> {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(records)
+    }
+
+    /// Builds embedding-ready recall documents from stored summaries and notes.
+    ///
+    /// # Arguments
+    ///
+    /// * `notes` - Filesystem note store.
+    ///
+    /// # Returns
+    ///
+    /// One document per entity with non-empty text content.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if SQL reads or note file reads fail.
+    pub fn recall_documents(&self, notes: &NoteStore) -> Result<Vec<RecallDocument>> {
+        let mut stmt = self.conn.prepare(
+            "
+            SELECT e.id, e.canonical_name, e.kind, COALESCE(e.summary, ''), n.note_path
+            FROM entities e
+            LEFT JOIN note_refs n ON n.entity_id = e.id
+            ORDER BY e.id
+            ",
+        )?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut docs = Vec::with_capacity(rows.len());
+        for (entity_id, canonical_name, kind, summary, note_path) in rows {
+            let note_summary = match note_path {
+                Some(path) => {
+                    let markdown = notes.read_note(&path)?;
+                    first_paragraph(&markdown)
+                }
+                None => String::new(),
+            };
+
+            let merged = if !note_summary.trim().is_empty() {
+                note_summary
+            } else {
+                summary
+            }
+            .trim()
+            .to_string();
+
+            if merged.is_empty() {
+                continue;
+            }
+
+            docs.push(RecallDocument {
+                entity_id,
+                canonical_name,
+                kind,
+                text: merged,
+            });
+        }
+
+        Ok(docs)
     }
 
     fn load_related_entities(&self, entity_id: i64) -> Result<Vec<EntityRecord>> {

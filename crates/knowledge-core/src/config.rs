@@ -9,16 +9,30 @@ const DEFAULT_PIPELINE_PROVIDER_BATCH_SIZE: u32 = 32;
 const MAX_PIPELINE_PROVIDER_BATCH_SIZE: u32 = 1024;
 const DEFAULT_PIPELINE_PROVIDER_TIMEOUT_MS: u64 = 3_000;
 const MAX_PIPELINE_PROVIDER_TIMEOUT_MS: u64 = 300_000;
+const DEFAULT_EMBEDDINGS_PROVIDER: &str = "none";
+const DEFAULT_EMBEDDINGS_MODEL: &str = "embeddinggemma-300m-GGUF";
+const DEFAULT_EMBEDDINGS_BASE_URL: &str = "http://127.0.0.1:11434";
+const DEFAULT_EMBEDDINGS_TIMEOUT_MS: u64 = 5_000;
+const MAX_EMBEDDINGS_TIMEOUT_MS: u64 = 300_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveConfig {
     pub recall: RecallConfig,
+    pub embeddings: EmbeddingsConfig,
     pub pipeline: PipelineConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecallConfig {
     pub top_k: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddingsConfig {
+    pub provider: String,
+    pub model: String,
+    pub base_url: String,
+    pub timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,10 +51,21 @@ pub struct PipelineProviderConfig {
     pub timeout_ms: u64,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResolveOverrides {
+    pub recall_top_k: Option<u32>,
+    pub embeddings_provider: Option<String>,
+    pub embeddings_model: Option<String>,
+    pub embeddings_base_url: Option<String>,
+    pub embeddings_timeout_ms: Option<u64>,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct FileConfig {
     #[serde(default)]
     recall: FileRecallConfig,
+    #[serde(default)]
+    embeddings: FileEmbeddingsConfig,
     #[serde(default)]
     pipeline: FilePipelineConfig,
 }
@@ -48,6 +73,14 @@ struct FileConfig {
 #[derive(Debug, Deserialize, Default)]
 struct FileRecallConfig {
     top_k: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct FileEmbeddingsConfig {
+    provider: Option<String>,
+    model: Option<String>,
+    base_url: Option<String>,
+    timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -74,6 +107,14 @@ struct FilePipelineProviderConfig {
 /// * `file_json` - Optional JSON config document.
 /// * `env_top_k` - Optional recall top-k from environment.
 /// * `cli_top_k` - Optional recall top-k from CLI.
+/// * `env_embeddings_provider` - Optional embeddings provider from environment.
+/// * `cli_embeddings_provider` - Optional embeddings provider from CLI.
+/// * `env_embeddings_model` - Optional embeddings model from environment.
+/// * `cli_embeddings_model` - Optional embeddings model from CLI.
+/// * `env_embeddings_base_url` - Optional embeddings base URL from environment.
+/// * `cli_embeddings_base_url` - Optional embeddings base URL from CLI.
+/// * `env_embeddings_timeout_ms` - Optional embeddings timeout in ms from environment.
+/// * `cli_embeddings_timeout_ms` - Optional embeddings timeout in ms from CLI.
 ///
 /// # Returns
 ///
@@ -84,8 +125,8 @@ struct FilePipelineProviderConfig {
 /// Returns an error when JSON parsing fails or values are invalid.
 pub fn resolve(
     file_json: Option<&str>,
-    env_top_k: Option<u32>,
-    cli_top_k: Option<u32>,
+    env_overrides: ResolveOverrides,
+    cli_overrides: ResolveOverrides,
 ) -> Result<EffectiveConfig> {
     let file_cfg = match file_json {
         Some(raw) => serde_json::from_str::<FileConfig>(raw)
@@ -93,14 +134,51 @@ pub fn resolve(
         None => FileConfig::default(),
     };
 
-    let top_k = cli_top_k
-        .or(env_top_k)
+    let top_k = cli_overrides
+        .recall_top_k
+        .or(env_overrides.recall_top_k)
         .or(file_cfg.recall.top_k)
         .unwrap_or(DEFAULT_RECALL_TOP_K);
 
     if top_k == 0 || top_k > MAX_RECALL_TOP_K {
         anyhow::bail!(
             "invalid config: recall.top_k must be between 1 and {MAX_RECALL_TOP_K}, got {top_k}"
+        );
+    }
+
+    let embeddings_provider = cli_overrides
+        .embeddings_provider
+        .or(env_overrides.embeddings_provider)
+        .or(file_cfg.embeddings.provider)
+        .unwrap_or_else(|| DEFAULT_EMBEDDINGS_PROVIDER.to_string());
+    let embeddings_model = cli_overrides
+        .embeddings_model
+        .or(env_overrides.embeddings_model)
+        .or(file_cfg.embeddings.model)
+        .unwrap_or_else(|| DEFAULT_EMBEDDINGS_MODEL.to_string());
+    let embeddings_base_url = cli_overrides
+        .embeddings_base_url
+        .or(env_overrides.embeddings_base_url)
+        .or(file_cfg.embeddings.base_url)
+        .unwrap_or_else(|| DEFAULT_EMBEDDINGS_BASE_URL.to_string());
+    let embeddings_timeout_ms = cli_overrides
+        .embeddings_timeout_ms
+        .or(env_overrides.embeddings_timeout_ms)
+        .or(file_cfg.embeddings.timeout_ms)
+        .unwrap_or(DEFAULT_EMBEDDINGS_TIMEOUT_MS);
+
+    if embeddings_provider.trim().is_empty() {
+        anyhow::bail!("invalid config: embeddings.provider must be a non-empty string");
+    }
+    if embeddings_model.trim().is_empty() {
+        anyhow::bail!("invalid config: embeddings.model must be a non-empty string");
+    }
+    if embeddings_base_url.trim().is_empty() {
+        anyhow::bail!("invalid config: embeddings.base_url must be a non-empty string");
+    }
+    if embeddings_timeout_ms == 0 || embeddings_timeout_ms > MAX_EMBEDDINGS_TIMEOUT_MS {
+        anyhow::bail!(
+            "invalid config: embeddings.timeout_ms must be between 1 and {MAX_EMBEDDINGS_TIMEOUT_MS}, got {embeddings_timeout_ms}"
         );
     }
 
@@ -164,6 +242,12 @@ pub fn resolve(
 
     Ok(EffectiveConfig {
         recall: RecallConfig { top_k },
+        embeddings: EmbeddingsConfig {
+            provider: embeddings_provider,
+            model: embeddings_model,
+            base_url: embeddings_base_url,
+            timeout_ms: embeddings_timeout_ms,
+        },
         pipeline: PipelineConfig {
             enabled: file_cfg.pipeline.enabled.unwrap_or(false),
             max_attempts,
@@ -184,5 +268,15 @@ pub fn resolve_for_test(
     env_top_k: Option<u32>,
     cli_top_k: Option<u32>,
 ) -> Result<EffectiveConfig> {
-    resolve(Some(file_json), env_top_k, cli_top_k)
+    resolve(
+        Some(file_json),
+        ResolveOverrides {
+            recall_top_k: env_top_k,
+            ..ResolveOverrides::default()
+        },
+        ResolveOverrides {
+            recall_top_k: cli_top_k,
+            ..ResolveOverrides::default()
+        },
+    )
 }

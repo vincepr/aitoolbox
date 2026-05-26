@@ -151,6 +151,25 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX IF NOT EXISTS idx_entities_notes_state ON entities(notes_state);
         "#,
     },
+    Migration {
+        version: 4,
+        name: "entity_embedding_cache",
+        sql: r#"
+        CREATE TABLE IF NOT EXISTS entity_embeddings (
+            entity_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            source_fingerprint TEXT NOT NULL,
+            vector_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (entity_id, provider, model),
+            FOREIGN KEY(entity_id) REFERENCES entities(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_entity_embeddings_provider_model
+            ON entity_embeddings(provider, model);
+        "#,
+    },
 ];
 
 /// Returns the latest supported schema version.

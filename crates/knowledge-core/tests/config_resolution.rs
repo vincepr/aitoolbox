@@ -31,3 +31,12 @@ fn pipeline_defaults_are_disabled_and_typed() {
     assert_eq!(effective.pipeline.max_attempts, 3);
     assert_eq!(effective.pipeline.provider.kind, "disabled");
 }
+
+#[test]
+fn embeddings_defaults_are_none_and_ollama_compatible() {
+    let file_cfg = r#"{}"#;
+    let effective = resolve_for_test(file_cfg, None, None).expect("defaults resolve");
+    assert_eq!(effective.embeddings.provider, "none");
+    assert_eq!(effective.embeddings.model, "embeddinggemma-300m-GGUF");
+    assert_eq!(effective.embeddings.base_url, "http://127.0.0.1:11434");
+}
